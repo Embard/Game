@@ -151,7 +151,9 @@ class Background {
     for (const cloud of this.clouds) {
       cloud.x -= speed * cloud.speedMul * dt;
     }
-    this.clouds = this.clouds.filter((c) => c.x > -160);
+    this.clouds = this.clouds.filter(function (c) {
+      return c.x > -160;
+    });
     while (this.clouds.length < 9) this.spawnCloud();
   }
 
@@ -220,7 +222,7 @@ class Player {
   constructor(game, portraitTexture) {
     this.game = game;
     this.portraitTexture = portraitTexture;
-    this.usePhoto = !!portraitTexture?.ready;
+    this.usePhoto = !!(portraitTexture && portraitTexture.ready);
 
     this.x = 160;
     this.width = 74;
@@ -555,8 +557,12 @@ class ObstacleManager {
 
   chooseType() {
     const level = this.game.speed / CONFIG.baseSpeed;
-    const pool = this.types.filter((t) => t.difficulty <= level * 0.5 + 0.2);
-    const available = pool.filter((t) => t.kind !== this.lastType);
+    const pool = this.types.filter(function (t) {
+      return t.difficulty <= level * 0.5 + 0.2;
+    });
+    const available = pool.filter(function (t) {
+      return t.kind !== this.lastType;
+    }, this);
     const source = available.length ? available : pool;
     const next = source[Math.floor(Math.random() * source.length)] || pool[0];
     this.lastType = next.kind;
@@ -578,7 +584,9 @@ class ObstacleManager {
     }
 
     for (const obs of this.items) obs.update(dt);
-    this.items = this.items.filter((o) => o.x + o.width > -10);
+    this.items = this.items.filter(function (o) {
+      return o.x + o.width > -10;
+    });
   }
 
   draw(ctx) {
@@ -597,7 +605,7 @@ class InputController {
   }
 
   bindKeyboard() {
-    window.addEventListener("keydown", (e) => {
+    window.addEventListener("keydown", function (e) {
       if (["Space", "ArrowUp", "KeyW", "ArrowDown", "KeyS", "Enter"].includes(e.code)) {
         e.preventDefault();
       }
@@ -623,17 +631,17 @@ class InputController {
       if (e.code === "KeyP") {
         this.game.togglePause();
       }
-    });
+    }.bind(this));
 
-    window.addEventListener("keyup", (e) => {
+    window.addEventListener("keyup", function (e) {
       if (["ArrowDown", "KeyS"].includes(e.code)) {
         this.game.player.setDuck(false);
       }
-    });
+    }.bind(this));
   }
 
   bindPointer() {
-    const onTap = () => {
+    const onTap = function () {
       this.game.userGesture();
       if (this.game.state === "gameover") {
         this.game.restart();
@@ -641,56 +649,64 @@ class InputController {
       }
       this.game.start();
       this.game.player.jump();
-    };
+    }.bind(this);
 
-    this.game.canvas.addEventListener("pointerdown", (e) => {
+    this.game.canvas.addEventListener("pointerdown", function (e) {
       this.touchStartY = e.clientY;
       onTap();
-    });
+    }.bind(this));
 
-    this.game.canvas.addEventListener("pointermove", (e) => {
+    this.game.canvas.addEventListener("pointermove", function (e) {
       if (this.touchStartY == null) return;
       const delta = e.clientY - this.touchStartY;
       if (delta > 38) this.game.player.setDuck(true);
-    });
+    }.bind(this));
 
-    const resetTouch = () => {
+    const resetTouch = function () {
       this.touchStartY = null;
       this.game.player.setDuck(false);
-    };
+    }.bind(this);
 
     this.game.canvas.addEventListener("pointerup", resetTouch);
     this.game.canvas.addEventListener("pointercancel", resetTouch);
 
     const duckBtn = document.getElementById("duckBtn");
-    duckBtn.addEventListener("pointerdown", (e) => {
+    duckBtn.addEventListener("pointerdown", function (e) {
       e.preventDefault();
       this.game.userGesture();
       this.game.start();
       this.game.player.setDuck(true);
-    });
-    duckBtn.addEventListener("pointerup", () => this.game.player.setDuck(false));
-    duckBtn.addEventListener("pointerleave", () => this.game.player.setDuck(false));
+    }.bind(this));
+    duckBtn.addEventListener("pointerup", function () {
+      this.game.player.setDuck(false);
+    }.bind(this));
+    duckBtn.addEventListener("pointerleave", function () {
+      this.game.player.setDuck(false);
+    }.bind(this));
   }
 
   bindUIButtons() {
-    document.getElementById("restartBtn").addEventListener("click", () => {
+    document.getElementById("restartBtn").addEventListener("click", function () {
       this.game.userGesture();
       this.game.restart();
-    });
+    }.bind(this));
 
-    document.getElementById("pauseBtn").addEventListener("click", () => {
+    document.getElementById("pauseBtn").addEventListener("click", function () {
       this.game.userGesture();
       this.game.togglePause();
-    });
+    }.bind(this));
 
-    document.getElementById("fullscreenBtn").addEventListener("click", async () => {
+    document.getElementById("fullscreenBtn").addEventListener("click", function () {
       try {
         const shell = document.querySelector(".game-shell");
         if (!document.fullscreenElement) {
-          await shell.requestFullscreen?.();
+          if (shell.requestFullscreen) {
+            shell.requestFullscreen();
+          }
         } else {
-          await document.exitFullscreen?.();
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          }
         }
       } catch {
         // Fullscreen может быть ограничен браузером, игра продолжит работать.
@@ -726,14 +742,16 @@ class Game {
     this.lastScoreMilestone = 0;
 
     this.onResize();
-    window.addEventListener("resize", () => this.onResize());
+    window.addEventListener("resize", this.onResize.bind(this));
 
-    requestAnimationFrame((t) => this.loop(t));
+    requestAnimationFrame(this.loop.bind(this));
   }
 
   userGesture() {
     this.audio.ensure();
-    this.audio.ctx?.resume?.();
+    if (this.audio.ctx && this.audio.ctx.resume) {
+      this.audio.ctx.resume();
+    }
   }
 
   onResize() {
@@ -791,7 +809,7 @@ class Game {
     if (this.state === "running") this.update(dt);
     this.render();
 
-    requestAnimationFrame((t) => this.loop(t));
+    requestAnimationFrame(this.loop.bind(this));
   }
 
   update(dt) {
@@ -920,12 +938,16 @@ class Game {
 }
 
 function loadPlayerPhoto() {
-  return new Promise((resolve) => {
+  return new Promise(function (resolve) {
     const img = new Image();
     img.decoding = "async";
     img.src = CONFIG.photo.path;
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    img.onload = function () {
+      resolve(img);
+    };
+    img.onerror = function () {
+      resolve(null);
+    };
   });
 }
 
