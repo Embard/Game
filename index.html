@@ -1,48 +1,42 @@
-diff --git a/index.html b/index.html
-new file mode 100644
-index 0000000000000000000000000000000000000000..3c1318fdb70f57216a2d5dde5ecfc2bb5d826f60
---- /dev/null
-+++ b/index.html
-@@ -0,0 +1,42 @@
-+<!doctype html>
-+<html lang="ru">
-+  <head>
-+    <meta charset="UTF-8" />
-+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-+    <title>Photo Runner</title>
-+    <link rel="stylesheet" href="style.css" />
-+  </head>
-+  <body>
-+    <main class="app">
-+      <header class="hud">
-+        <h1>Photo Runner</h1>
-+        <p class="subtitle">Бесконечный раннер с персонажем на основе фото</p>
-+      </header>
-+
-+      <section class="game-shell" aria-label="Игровая область">
-+        <canvas id="gameCanvas" width="960" height="360" aria-label="Photo Runner"></canvas>
-+
-+        <div class="controls" role="group" aria-label="Кнопки управления">
-+          <button id="pauseBtn" class="btn" type="button">Пауза</button>
-+          <button id="restartBtn" class="btn" type="button">Перезапуск</button>
-+          <button id="fullscreenBtn" class="btn" type="button">Fullscreen</button>
-+        </div>
-+      </section>
-+
-+      <section class="help">
-+        <h2>Управление</h2>
-+        <ul>
-+          <li><kbd>Space</kbd> / <kbd>↑</kbd> / <kbd>W</kbd> — прыжок</li>
-+          <li><kbd>↓</kbd> / <kbd>S</kbd> — пригнуться</li>
-+          <li>Тап по экрану — прыжок</li>
-+          <li>Свайп вниз или кнопка <strong>Duck</strong> — пригнуться</li>
-+          <li><kbd>Enter</kbd> / <kbd>Space</kbd> / тап после поражения — рестарт</li>
-+        </ul>
-+      </section>
-+    </main>
-+
-+    <button id="duckBtn" class="duck-mobile" type="button" aria-label="Пригнуться">Duck</button>
-+
-+    <script src="game.js"></script>
-+  </body>
-+</html>
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Photo Runner</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hud">
+        <h1>Photo Runner</h1>
+        <p class="subtitle">Бесконечный раннер с персонажем на основе фото</p>
+      </header>
+
+      <section class="game-shell" aria-label="Игровая область">
+        <canvas id="gameCanvas" width="960" height="360" aria-label="Photo Runner"></canvas>
+
+        <div class="controls" role="group" aria-label="Кнопки управления">
+          <button id="pauseBtn" class="btn" type="button">Пауза</button>
+          <button id="restartBtn" class="btn" type="button">Перезапуск</button>
+          <button id="fullscreenBtn" class="btn" type="button">Fullscreen</button>
+        </div>
+      </section>
+
+      <section class="help">
+        <h2>Управление</h2>
+        <ul>
+          <li><kbd>Space</kbd> / <kbd>↑</kbd> / <kbd>W</kbd> — прыжок</li>
+          <li><kbd>↓</kbd> / <kbd>S</kbd> — пригнуться</li>
+          <li>Тап по экрану — прыжок</li>
+          <li>Свайп вниз или кнопка <strong>Duck</strong> — пригнуться</li>
+          <li><kbd>Enter</kbd> / <kbd>Space</kbd> / тап после поражения — рестарт</li>
+        </ul>
+      </section>
+    </main>
+
+    <button id="duckBtn" class="duck-mobile" type="button" aria-label="Пригнуться">Duck</button>
+
+    <script src="game.js"></script>
+  </body>
+</html>
