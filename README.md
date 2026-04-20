@@ -42,6 +42,7 @@ python3 -m http.server 8000
 2. Перезагрузите страницу.
 3. Логика и анимации изменять не нужно.
 
+ codex/create-chrome-dino-style-web-game-97ta7c
 ### Точная подстройка лица (если нужно)
 
 В начале `game.js` в `CONFIG.photo` можно быстро подстроить, чтобы лицо совпадало с фото максимально точно:
@@ -52,6 +53,8 @@ python3 -m http.server 8000
 - `saturation`, `contrast`, `brightness` — лёгкая цветокоррекция
 
 
+
+ main
 ## Управление
 
 - `Space` / `ArrowUp` / `W` — прыжок
@@ -84,8 +87,11 @@ python3 -m http.server 8000
 - `obstacleFrequency`
 
 Можно быстро менять сложность без изменения архитектуры игры.
+ codex/create-chrome-dino-style-web-game-97ta7c
 
 
 ## Совместимость с GitHub
 
 В `game.js` используется совместимый синтаксис без optional chaining (`?.`) и без стрелочных функций (`=>`), чтобы избежать конфликтов при загрузке/проверках в некоторых окружениях.
+
+ main
