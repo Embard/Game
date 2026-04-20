@@ -2,6 +2,25 @@
 
 // Быстрая настройка баланса игры
 const CONFIG = {
+ codex/create-chrome-dino-style-web-game-97ta7c
+  gravity: 2080,
+  jumpForce: 760,
+  baseSpeed: 335,
+  speedGrowth: 8.8,
+  obstacleFrequency: 1.1,
+  maxDt: 0.033,
+  groundHeight: 82,
+  // Настройка использования фото (для лучшего попадания по лицу)
+  photo: {
+    path: "assets/player-photo.jpg",
+    focusX: 0.5, // 0..1 (сдвиг центра кадра по X)
+    focusY: 0.26, // 0..1 (сдвиг центра кадра по Y, лицо обычно выше центра)
+    zoom: 1.32, // >1 приближает лицо
+    saturation: 1.08,
+    contrast: 1.07,
+    brightness: 1.02,
+  },
+
   gravity: 2100,
   jumpForce: 760,
   baseSpeed: 340,
@@ -9,6 +28,7 @@ const CONFIG = {
   obstacleFrequency: 1.1,
   maxDt: 0.033,
   groundHeight: 82,
+ main
 };
 
 const STORAGE_KEY = "photo-runner-best";
@@ -59,6 +79,68 @@ class AudioEngine {
   }
 }
 
+ codex/create-chrome-dino-style-web-game-97ta7c
+class PortraitTexture {
+  constructor(image) {
+    this.ready = false;
+    this.image = image;
+    this.canvas = null;
+    this.build();
+  }
+
+  build() {
+    if (!this.image) return;
+
+    const size = 256;
+    const buffer = document.createElement("canvas");
+    buffer.width = size;
+    buffer.height = size;
+
+    const ctx = buffer.getContext("2d");
+    const iw = this.image.naturalWidth || this.image.width;
+    const ih = this.image.naturalHeight || this.image.height;
+    if (!iw || !ih) return;
+
+    const cropSize = Math.min(iw, ih) / CONFIG.photo.zoom;
+    const centerX = iw * CONFIG.photo.focusX;
+    const centerY = ih * CONFIG.photo.focusY;
+    let sx = centerX - cropSize / 2;
+    let sy = centerY - cropSize / 2;
+
+    sx = Math.max(0, Math.min(sx, iw - cropSize));
+    sy = Math.max(0, Math.min(sy, ih - cropSize));
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - 5, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+
+    ctx.filter = `saturate(${CONFIG.photo.saturation}) contrast(${CONFIG.photo.contrast}) brightness(${CONFIG.photo.brightness})`;
+    ctx.drawImage(this.image, sx, sy, cropSize, cropSize, 0, 0, size, size);
+    ctx.restore();
+
+    const rim = ctx.createRadialGradient(size / 2, size / 2, size * 0.15, size / 2, size / 2, size / 2);
+    rim.addColorStop(0.8, "rgba(255,255,255,0)");
+    rim.addColorStop(1, "rgba(255,255,255,0.55)");
+    ctx.fillStyle = rim;
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    this.canvas = buffer;
+    this.ready = true;
+  }
+
+  draw(ctx, x, y, w, h) {
+    if (!this.ready || !this.canvas) return false;
+    ctx.drawImage(this.canvas, x, y, w, h);
+    return true;
+  }
+}
+
+
+ main
 class Background {
   constructor(game) {
     this.game = game;
@@ -82,7 +164,13 @@ class Background {
     for (const cloud of this.clouds) {
       cloud.x -= speed * cloud.speedMul * dt;
     }
+ codex/create-chrome-dino-style-web-game-97ta7c
+    this.clouds = this.clouds.filter(function (c) {
+      return c.x > -160;
+    });
+
     this.clouds = this.clouds.filter((c) => c.x > -160);
+ main
     while (this.clouds.length < 9) this.spawnCloud();
   }
 
@@ -90,8 +178,13 @@ class Background {
     const { worldWidth: w, worldHeight: h, groundY } = this.game;
 
     const sky = ctx.createLinearGradient(0, 0, 0, h);
+ codex/create-chrome-dino-style-web-game-97ta7c
+    sky.addColorStop(0, "#f7fbff");
+    sky.addColorStop(1, "#dceeff");
+
     sky.addColorStop(0, "#f6fbff");
     sky.addColorStop(1, "#ddecff");
+ main
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
@@ -148,6 +241,18 @@ class Background {
 }
 
 class Player {
+ codex/create-chrome-dino-style-web-game-97ta7c
+  constructor(game, portraitTexture) {
+    this.game = game;
+    this.portraitTexture = portraitTexture;
+    this.usePhoto = !!(portraitTexture && portraitTexture.ready);
+
+    this.x = 160;
+    this.width = 74;
+    this.standHeight = 116;
+    this.duckHeight = 84;
+
+
   constructor(game, image) {
     this.game = game;
     this.photo = image;
@@ -156,6 +261,7 @@ class Player {
     this.width = 72;
     this.standHeight = 112;
     this.duckHeight = 82;
+ main
     this.height = this.standHeight;
     this.y = this.game.groundY - this.height;
     this.vy = 0;
@@ -185,6 +291,10 @@ class Player {
       this.ducking = false;
       return;
     }
+ codex/create-chrome-dino-style-web-game-97ta7c
+
+
+ main
     this.ducking = isDown;
     const nextHeight = this.ducking ? this.duckHeight : this.standHeight;
     if (nextHeight !== this.height) {
@@ -213,23 +323,39 @@ class Player {
 
   getBounds() {
     return {
+ codex/create-chrome-dino-style-web-game-97ta7c
+      x: this.x + 11,
+      y: this.y + 12,
+      width: this.width - 22,
+      height: this.height - 15,
+
       x: this.x + 10,
       y: this.y + 10,
       width: this.width - 20,
       height: this.height - 12,
+ main
     };
   }
 
   draw(ctx) {
     ctx.save();
+ codex/create-chrome-dino-style-web-game-97ta7c
+    const bob = this.grounded ? Math.sin(this.runTime * 12) * 1.4 : 0;
+    const tilt = this.grounded ? 0 : Math.max(-0.23, Math.min(0.23, this.vy / 1750));
+
     const bob = this.grounded ? Math.sin(this.runTime * 12) * 1.5 : 0;
     const tilt = this.grounded ? 0 : Math.max(-0.25, Math.min(0.25, this.vy / 1700));
+ main
 
     ctx.translate(this.x + this.width / 2, this.y + this.height / 2 + bob);
     ctx.rotate(tilt);
 
     this.drawBody(ctx);
     this.drawHead(ctx);
+ codex/create-chrome-dino-style-web-game-97ta7c
+
+
+ main
     ctx.restore();
   }
 
@@ -238,6 +364,45 @@ class Player {
     const h = this.height;
     const torsoTop = -h * 0.1;
     const torsoBottom = h * 0.28;
+
+ codex/create-chrome-dino-style-web-game-97ta7c
+    // Торс (под рубашку в стиле фото)
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-w * 0.22, torsoTop, w * 0.44, torsoBottom - torsoTop, 14);
+    ctx.clip();
+
+    const shirt = ctx.createLinearGradient(0, torsoTop, 0, torsoBottom);
+    shirt.addColorStop(0, "#1f4f82");
+    shirt.addColorStop(1, "#153b62");
+    ctx.fillStyle = shirt;
+    ctx.fillRect(-w * 0.3, torsoTop - 2, w * 0.6, torsoBottom - torsoTop + 4);
+
+    // Лёгкая клетка для более близкой стилизации
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "#4f79a8";
+    ctx.lineWidth = 1.1;
+    for (let x = -w * 0.3; x <= w * 0.3; x += 5) {
+      ctx.beginPath();
+      ctx.moveTo(x, torsoTop - 2);
+      ctx.lineTo(x, torsoBottom + 2);
+      ctx.stroke();
+    }
+    for (let y = torsoTop - 2; y <= torsoBottom + 2; y += 5) {
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.3, y);
+      ctx.lineTo(w * 0.3, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    const legSwing = this.grounded ? Math.sin(this.runTime * 16) * 8 : 2;
+    this.drawLeg(ctx, -w * 0.09, torsoBottom - 2, 27, legSwing);
+    this.drawLeg(ctx, w * 0.09, torsoBottom - 2, 27, -legSwing);
+
+    const armSwing = this.grounded ? Math.sin(this.runTime * 16 + Math.PI / 2) * 10 : 2;
+    this.drawArm(ctx, -w * 0.23, torsoTop + 12, 24, armSwing, false);
+    this.drawArm(ctx, w * 0.23, torsoTop + 12, 24, -armSwing, true);
 
     ctx.save();
     ctx.fillStyle = this.ducking ? "#1e7ec9" : "#2189dc";
@@ -253,6 +418,7 @@ class Player {
     this.drawArm(ctx, -w * 0.22, torsoTop + 10, 24, armSwing, false);
     this.drawArm(ctx, w * 0.22, torsoTop + 10, 24, -armSwing, true);
     ctx.restore();
+ main
   }
 
   drawLeg(ctx, x, y, len, swing) {
@@ -262,6 +428,10 @@ class Player {
     ctx.strokeStyle = "#194a79";
     ctx.lineWidth = 8;
     ctx.lineCap = "round";
+ codex/create-chrome-dino-style-web-game-97ta7c
+
+
+ main
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(0, len);
@@ -270,7 +440,11 @@ class Player {
     ctx.lineWidth = 7;
     ctx.beginPath();
     ctx.moveTo(0, len);
+ codex/create-chrome-dino-style-web-game-97ta7c
+    ctx.lineTo(11, len + 10);
+
     ctx.lineTo(10, len + 10);
+ main
     ctx.stroke();
     ctx.restore();
   }
@@ -282,6 +456,10 @@ class Player {
     ctx.strokeStyle = "#1b5b94";
     ctx.lineWidth = 6;
     ctx.lineCap = "round";
+ codex/create-chrome-dino-style-web-game-97ta7c
+
+
+ main
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(mirror ? 12 : -12, len);
@@ -290,13 +468,83 @@ class Player {
   }
 
   drawHead(ctx) {
+ codex/create-chrome-dino-style-web-game-97ta7c
+    const headRadius = 28;
+    const cx = 0;
+    const cy = -this.height * 0.3;
+
     const headRadius = 27;
     const cx = 0;
     const cy = -this.height * 0.28;
+ main
 
     // Тень под головой
     ctx.fillStyle = "rgba(0,0,0,0.12)";
     ctx.beginPath();
+ codex/create-chrome-dino-style-web-game-97ta7c
+    ctx.ellipse(cx + 2, cy + headRadius + 17, 18, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Шея
+    ctx.fillStyle = "#d6a787";
+    ctx.beginPath();
+    ctx.roundRect(cx - 7, cy + headRadius - 4, 14, 15, 5);
+    ctx.fill();
+
+    if (this.usePhoto) {
+      this.drawPhotoHead(ctx, cx, cy, headRadius);
+    } else {
+      this.drawFallbackHead(ctx, cx, cy, headRadius);
+    }
+  }
+
+  drawPhotoHead(ctx, cx, cy, headRadius) {
+    ctx.save();
+    ctx.translate(cx - headRadius, cy - headRadius);
+
+    const drew = this.portraitTexture.draw(ctx, 0, 0, headRadius * 2, headRadius * 2);
+    if (!drew) {
+      ctx.restore();
+      this.drawFallbackHead(ctx, cx, cy, headRadius);
+      return;
+    }
+    ctx.restore();
+
+    // Светлый контур вокруг головы, чтобы герой читался на любом фоне
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, headRadius - 1, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  drawFallbackHead(ctx, cx, cy, headRadius) {
+    const grad = ctx.createLinearGradient(0, cy - headRadius, 0, cy + headRadius);
+    grad.addColorStop(0, "#ffd9bf");
+    grad.addColorStop(1, "#efb88f");
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, headRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#4e3a2f";
+    ctx.beginPath();
+    ctx.arc(cx - 8, cy - 3, 2.5, 0, Math.PI * 2);
+    ctx.arc(cx + 8, cy - 3, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#5a3f30";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy + 6, 8, 0, Math.PI);
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, headRadius - 1, 0, Math.PI * 2);
+
     ctx.ellipse(cx + 2, cy + headRadius + 16, 18, 8, 0, 0, Math.PI * 2);
     ctx.fill();
 
@@ -348,6 +596,7 @@ class Player {
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.ellipse(cx, cy, headRadius, headRadius * 1.04, 0, 0, Math.PI * 2);
+ main
     ctx.stroke();
   }
 }
@@ -429,7 +678,11 @@ class ObstacleManager {
   constructor(game) {
     this.game = game;
     this.items = [];
+ codex/create-chrome-dino-style-web-game-97ta7c
+    this.cooldown = 0.86;
+
     this.cooldown = 0.85;
+ main
     this.lastType = null;
     this.types = [
       { kind: "cone", width: 30, height: 46, minGap: 260, difficulty: 0 },
@@ -440,15 +693,30 @@ class ObstacleManager {
 
   reset() {
     this.items.length = 0;
+ codex/create-chrome-dino-style-web-game-97ta7c
+    this.cooldown = 0.86;
+
     this.cooldown = 0.85;
+ main
     this.lastType = null;
   }
 
   chooseType() {
     const level = this.game.speed / CONFIG.baseSpeed;
+ codex/create-chrome-dino-style-web-game-97ta7c
+    const pool = this.types.filter(function (t) {
+      return t.difficulty <= level * 0.5 + 0.2;
+    });
+    const available = pool.filter(function (t) {
+      return t.kind !== this.lastType;
+    }, this);
+    const source = available.length ? available : pool;
+    const next = source[Math.floor(Math.random() * source.length)] || pool[0];
+
     const pool = this.types.filter((t) => t.difficulty <= level * 0.5 + 0.2);
     const available = pool.filter((t) => t.kind !== this.lastType) || pool;
     const next = available[Math.floor(Math.random() * available.length)] || pool[0];
+ main
     this.lastType = next.kind;
     return next;
   }
@@ -458,14 +726,29 @@ class ObstacleManager {
 
     if (this.cooldown <= 0) {
       const type = this.chooseType();
+ codex/create-chrome-dino-style-web-game-97ta7c
+      this.items.push(new Obstacle(this.game, type, this.game.worldWidth + 24));
+
+
       const x = this.game.worldWidth + 24;
       this.items.push(new Obstacle(this.game, type, x));
+ main
       const speedFactor = this.game.speed / CONFIG.baseSpeed;
       const baseGap = type.minGap / Math.max(1, speedFactor * 0.9);
       const randomGap = 80 + Math.random() * 170;
       const gapDistance = Math.max(190, baseGap + randomGap);
       this.cooldown = gapDistance / this.game.speed / CONFIG.obstacleFrequency;
     }
+
+ codex/create-chrome-dino-style-web-game-97ta7c
+    for (const obs of this.items) obs.update(dt);
+    this.items = this.items.filter(function (o) {
+      return o.x + o.width > -10;
+    });
+  }
+
+  draw(ctx) {
+    for (const obs of this.items) obs.draw(ctx, this.game.time);
 
     for (const obs of this.items) {
       obs.update(dt);
@@ -477,13 +760,17 @@ class ObstacleManager {
     for (const obs of this.items) {
       obs.draw(ctx, this.game.time);
     }
+ main
   }
 }
 
 class InputController {
   constructor(game) {
     this.game = game;
+ codex/create-chrome-dino-style-web-game-97ta7c
+
     this.duckPressed = false;
+ main
     this.touchStartY = null;
 
     this.bindKeyboard();
@@ -492,7 +779,11 @@ class InputController {
   }
 
   bindKeyboard() {
+ codex/create-chrome-dino-style-web-game-97ta7c
+    window.addEventListener("keydown", function (e) {
+
     window.addEventListener("keydown", (e) => {
+ main
       if (["Space", "ArrowUp", "KeyW", "ArrowDown", "KeyS", "Enter"].includes(e.code)) {
         e.preventDefault();
       }
@@ -508,7 +799,10 @@ class InputController {
       }
 
       if (["ArrowDown", "KeyS"].includes(e.code)) {
+ codex/create-chrome-dino-style-web-game-97ta7c
+
         this.duckPressed = true;
+ main
         this.game.player.setDuck(true);
       }
 
@@ -519,6 +813,19 @@ class InputController {
       if (e.code === "KeyP") {
         this.game.togglePause();
       }
+ codex/create-chrome-dino-style-web-game-97ta7c
+    }.bind(this));
+
+    window.addEventListener("keyup", function (e) {
+      if (["ArrowDown", "KeyS"].includes(e.code)) {
+        this.game.player.setDuck(false);
+      }
+    }.bind(this));
+  }
+
+  bindPointer() {
+    const onTap = function () {
+
     });
 
     window.addEventListener("keyup", (e) => {
@@ -531,6 +838,7 @@ class InputController {
 
   bindPointer() {
     const onTap = () => {
+ main
       this.game.userGesture();
       if (this.game.state === "gameover") {
         this.game.restart();
@@ -538,6 +846,25 @@ class InputController {
       }
       this.game.start();
       this.game.player.jump();
+ codex/create-chrome-dino-style-web-game-97ta7c
+    }.bind(this);
+
+    this.game.canvas.addEventListener("pointerdown", function (e) {
+      this.touchStartY = e.clientY;
+      onTap();
+    }.bind(this));
+
+    this.game.canvas.addEventListener("pointermove", function (e) {
+      if (this.touchStartY == null) return;
+      const delta = e.clientY - this.touchStartY;
+      if (delta > 38) this.game.player.setDuck(true);
+    }.bind(this));
+
+    const resetTouch = function () {
+      this.touchStartY = null;
+      this.game.player.setDuck(false);
+    }.bind(this);
+
     };
 
     this.game.canvas.addEventListener("pointerdown", (e) => {
@@ -555,16 +882,54 @@ class InputController {
       this.touchStartY = null;
       this.game.player.setDuck(false);
     };
+ main
 
     this.game.canvas.addEventListener("pointerup", resetTouch);
     this.game.canvas.addEventListener("pointercancel", resetTouch);
 
     const duckBtn = document.getElementById("duckBtn");
+ codex/create-chrome-dino-style-web-game-97ta7c
+    duckBtn.addEventListener("pointerdown", function (e) {
+
     duckBtn.addEventListener("pointerdown", (e) => {
+ main
       e.preventDefault();
       this.game.userGesture();
       this.game.start();
       this.game.player.setDuck(true);
+ codex/create-chrome-dino-style-web-game-97ta7c
+    }.bind(this));
+    duckBtn.addEventListener("pointerup", function () {
+      this.game.player.setDuck(false);
+    }.bind(this));
+    duckBtn.addEventListener("pointerleave", function () {
+      this.game.player.setDuck(false);
+    }.bind(this));
+  }
+
+  bindUIButtons() {
+    document.getElementById("restartBtn").addEventListener("click", function () {
+      this.game.userGesture();
+      this.game.restart();
+    }.bind(this));
+
+    document.getElementById("pauseBtn").addEventListener("click", function () {
+      this.game.userGesture();
+      this.game.togglePause();
+    }.bind(this));
+
+    document.getElementById("fullscreenBtn").addEventListener("click", function () {
+      try {
+        const shell = document.querySelector(".game-shell");
+        if (!document.fullscreenElement) {
+          if (shell.requestFullscreen) {
+            shell.requestFullscreen();
+          }
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          }
+
     });
     duckBtn.addEventListener("pointerup", () => this.game.player.setDuck(false));
     duckBtn.addEventListener("pointerleave", () => this.game.player.setDuck(false));
@@ -588,6 +953,7 @@ class InputController {
           await shell.requestFullscreen?.();
         } else {
           await document.exitFullscreen?.();
+ main
         }
       } catch {
         // Fullscreen может быть ограничен браузером, игра продолжит работать.
@@ -597,7 +963,11 @@ class InputController {
 }
 
 class Game {
+ codex/create-chrome-dino-style-web-game-97ta7c
+  constructor(canvas, portraitTexture) {
+
   constructor(canvas, playerPhoto) {
+ main
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
 
@@ -607,9 +977,14 @@ class Game {
 
     this.audio = new AudioEngine();
     this.background = new Background(this);
+ codex/create-chrome-dino-style-web-game-97ta7c
+    this.player = new Player(this, portraitTexture);
+    this.obstacles = new ObstacleManager(this);
+
     this.player = new Player(this, playerPhoto);
     this.obstacles = new ObstacleManager(this);
 
+ main
     this.input = new InputController(this);
 
     this.state = "ready"; // ready, running, paused, gameover
@@ -624,14 +999,26 @@ class Game {
     this.lastScoreMilestone = 0;
 
     this.onResize();
+ codex/create-chrome-dino-style-web-game-97ta7c
+    window.addEventListener("resize", this.onResize.bind(this));
+
+    requestAnimationFrame(this.loop.bind(this));
+
     window.addEventListener("resize", () => this.onResize());
 
     requestAnimationFrame((t) => this.loop(t));
+ main
   }
 
   userGesture() {
     this.audio.ensure();
+ codex/create-chrome-dino-style-web-game-97ta7c
+    if (this.audio.ctx && this.audio.ctx.resume) {
+      this.audio.ctx.resume();
+    }
+
     this.audio.ctx?.resume?.();
+ main
   }
 
   onResize() {
@@ -644,9 +1031,13 @@ class Game {
   }
 
   start() {
+ codex/create-chrome-dino-style-web-game-97ta7c
+    if (this.state === "ready") this.state = "running";
+
     if (this.state === "ready") {
       this.state = "running";
     }
+ main
   }
 
   restart() {
@@ -676,6 +1067,10 @@ class Game {
     this.hitFlash = 1;
     this.shake = 14;
     this.audio.hit();
+ codex/create-chrome-dino-style-web-game-97ta7c
+
+
+ main
     if (this.score > this.best) {
       this.best = this.score;
       localStorage.setItem(STORAGE_KEY, String(this.best));
@@ -687,12 +1082,19 @@ class Game {
     const dt = Math.min(CONFIG.maxDt, Math.max(0, rawDt));
     this.lastFrame = now;
 
+ codex/create-chrome-dino-style-web-game-97ta7c
+    if (this.state === "running") this.update(dt);
+    this.render();
+
+    requestAnimationFrame(this.loop.bind(this));
+
     if (this.state === "running") {
       this.update(dt);
     }
     this.render();
 
     requestAnimationFrame((t) => this.loop(t));
+ main
   }
 
   update(dt) {
@@ -712,9 +1114,12 @@ class Game {
     this.obstacles.update(dt);
 
     for (const obs of this.obstacles.items) {
+ codex/create-chrome-dino-style-web-game-97ta7c
+
       if (!obs.passed && obs.x + obs.width < this.player.x) {
         obs.passed = true;
       }
+ main
       if (this.intersects(this.player.getBounds(), obs.getBounds())) {
         this.gameOver();
         break;
@@ -756,16 +1161,28 @@ class Game {
     ctx.save();
     ctx.fillStyle = "rgba(255,255,255,0.84)";
     ctx.beginPath();
+ codex/create-chrome-dino-style-web-game-97ta7c
+    ctx.roundRect(14, 12, 320, 74, 12);
+
     ctx.roundRect(14, 12, 310, 74, 12);
+ main
     ctx.fill();
 
     ctx.fillStyle = "#213a58";
     ctx.font = "700 22px Inter, sans-serif";
     ctx.fillText(`Счёт: ${this.score}`, 28, 42);
+ codex/create-chrome-dino-style-web-game-97ta7c
+
+    ctx.font = "600 16px Inter, sans-serif";
+    ctx.fillStyle = "#446387";
+    ctx.fillText(`Рекорд: ${this.best}`, 28, 66);
+    ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, 176, 66);
+
     ctx.font = "600 16px Inter, sans-serif";
     ctx.fillStyle = "#446387";
     ctx.fillText(`Рекорд: ${this.best}`, 28, 66);
     ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, 170, 66);
+ main
     ctx.restore();
   }
 
@@ -823,17 +1240,36 @@ class Game {
 }
 
 function loadPlayerPhoto() {
+ codex/create-chrome-dino-style-web-game-97ta7c
+  return new Promise(function (resolve) {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = CONFIG.photo.path;
+    img.onload = function () {
+      resolve(img);
+    };
+    img.onerror = function () {
+      resolve(null);
+    };
+
   return new Promise((resolve) => {
     const img = new Image();
     img.decoding = "async";
     img.src = "assets/player-photo.jpg";
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
+ main
   });
 }
 
 (async function init() {
   const canvas = document.getElementById("gameCanvas");
+ codex/create-chrome-dino-style-web-game-97ta7c
+  const photo = await loadPlayerPhoto();
+  const portraitTexture = new PortraitTexture(photo);
+  new Game(canvas, portraitTexture);
+
   const playerPhoto = await loadPlayerPhoto();
   new Game(canvas, playerPhoto);
+ main
 })();
