@@ -417,7 +417,11 @@ class Player {
 
   startSlide() {
     if (!this.grounded) return;
-    if (this.ducking || this.slideCooldown > 0) return;
+    if (this.ducking) {
+      this.slideTimer = Math.max(this.slideTimer, 0.42);
+      return;
+    }
+    if (this.slideCooldown > 0) return;
     this.ducking = true;
     this.slideTimer = 0.62;
     this.height = this.slideHeight;
@@ -643,7 +647,7 @@ class Player {
 
     this.drawLegLimb(ctx, legs[1], false);
     this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 2, -51 + pelvisBob * 0.12, 22.5);
+    this.drawHead(ctx, 2, -48 + pelvisBob * 0.12, 22);
   }
 
   drawSlideFigure(ctx) {
@@ -731,7 +735,7 @@ class Player {
     ctx.restore();
 
     // Голова ближе к телу и шее.
-    this.drawHead(ctx, 6, -25, 21);
+    this.drawHead(ctx, 3, -22, 21);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
@@ -806,10 +810,6 @@ class Player {
   }
 
   drawHead(ctx, cx, cy, headRadius = 22) {
-    ctx.fillStyle = "#d6a787";
-    roundedRectPath(ctx, cx - 4.5, cy + headRadius - 3, 9, 9, 4);
-    ctx.fill();
-
     if (this.usePhoto) {
       this.drawPhotoHead(ctx, cx, cy, headRadius);
     } else {
@@ -1230,28 +1230,35 @@ class InputController {
     window.addEventListener("keydown", (e) => {
       if (isTypingTarget(e.target)) return;
 
-      if (["Space", "ArrowUp", "ArrowDown", "Enter", "KeyS"].includes(e.code)) {
-        e.preventDefault();
+      const code = e.code;
+      const isJump = code === "Space" || code === "ArrowUp";
+      const isSlide = code === "ArrowDown" || code === "KeyS";
+      const isRestart = code === "Enter";
+
+      if (isJump || isSlide || isRestart) e.preventDefault();
+
+      if (isRestart && (this.game.state === "gameover" || this.game.state === "win")) {
+        this.game.restart();
+        return;
       }
 
-      if (["Space", "ArrowUp"].includes(e.code)) {
+      if (isJump) {
         this.game.userGesture();
         if (this.restartIfEnded()) return;
         this.game.start();
         this.game.player.jump();
+        return;
       }
 
-      if (e.code === "ArrowDown" || e.code === "KeyS") {
+      if (isSlide) {
         this.game.userGesture();
+        if (this.restartIfEnded()) return;
         this.game.start();
         this.game.player.startSlide();
+        return;
       }
 
-      if (e.code === "Enter" && (this.game.state === "gameover" || this.game.state === "win")) {
-        this.game.restart();
-      }
-
-      if (e.code === "KeyP") {
+      if (code === "KeyP") {
         this.game.togglePause();
       }
     });
