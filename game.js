@@ -6,9 +6,15 @@ const CONFIG = {
   jumpForce: 760,
   baseSpeed: 335,
   speedGrowth: 8.8,
-  obstacleFrequency: 1.1,
+  obstacleFrequency: 1.08,
   maxDt: 0.033,
   groundHeight: 82,
+  workdayDuration: 15, // 8:00 -> 17:30 за 15 секунд активной игры
+  teaSpawnMin: 4.8,
+  teaSpawnMax: 7.2,
+  teaTimeRewind: 1.25, // откат игрового рабочего времени при сборе кружки
+  teaSlowdownFactor: 0.9,
+  teaSlowdownDuration: 2.2,
   // Настройка использования фото (для лучшего попадания по лицу)
   photo: {
     path: "assets/player-photo.jpg",
@@ -82,6 +88,26 @@ class AudioEngine {
   hit() {
     this.ping("sawtooth", 150, 0.17, 0.08);
   }
+
+  tea() {
+    this.ping("sine", 920, 0.07, 0.045);
+    window.setTimeout(() => this.ping("triangle", 680, 0.06, 0.035), 55);
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function formatWorkTime(progress) {
+  const start = 8 * 60;
+  const end = 17 * 60 + 30;
+  const total = end - start;
+  const minutes = Math.min(total, Math.max(0, Math.round(progress * total)));
+  const current = start + minutes;
+  const h = Math.floor(current / 60);
+  const m = current % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 class PortraitTexture {
@@ -339,22 +365,28 @@ class Player {
     const w = this.width;
     const h = this.height;
     const torsoTop = -h * 0.1;
-    const torsoBottom = h * 0.28;
+    const torsoBottom = h * 0.29;
+    const phase = this.runTime * 18;
 
-    // Торс (под рубашку в стиле фото)
+    // Ноги рисуются до торса, чтобы тело аккуратно перекрывало бедра.
+    const leftCycle = Math.sin(phase);
+    const rightCycle = Math.sin(phase + Math.PI);
+    this.drawLeg(ctx, -w * 0.085, torsoBottom - 2, leftCycle);
+    this.drawLeg(ctx, w * 0.085, torsoBottom - 2, rightCycle);
+
+    // Торс в клетчатой рубашке как на референсе, но с более аккуратным силуэтом раннера.
     ctx.save();
-    roundedRectPath(ctx, -w * 0.22, torsoTop, w * 0.44, torsoBottom - torsoTop, 14);
+    roundedRectPath(ctx, -w * 0.23, torsoTop, w * 0.46, torsoBottom - torsoTop, 13);
     ctx.clip();
 
     const shirt = ctx.createLinearGradient(0, torsoTop, 0, torsoBottom);
-    shirt.addColorStop(0, "#1f4f82");
+    shirt.addColorStop(0, "#245b91");
     shirt.addColorStop(1, "#153b62");
     ctx.fillStyle = shirt;
     ctx.fillRect(-w * 0.3, torsoTop - 2, w * 0.6, torsoBottom - torsoTop + 4);
 
-    // Лёгкая клетка для более близкой стилизации
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = "#4f79a8";
+    ctx.globalAlpha = 0.34;
+    ctx.strokeStyle = "#6d95bf";
     ctx.lineWidth = 1.1;
     for (let x = -w * 0.3; x <= w * 0.3; x += 5) {
       ctx.beginPath();
@@ -370,35 +402,49 @@ class Player {
     }
     ctx.restore();
 
-    // Более "марио-подобная" фаза шага: активный swing, короткий контакт стопы
-    const phase = this.runTime * 18;
-    const legSwing = this.grounded ? Math.sin(phase) * 17 : 4;
-    const kneeLift = this.grounded ? Math.max(0, Math.sin(phase + Math.PI * 0.5)) * 4 : 0;
-    this.drawLeg(ctx, -w * 0.09, torsoBottom - 2, 27 - kneeLift, legSwing);
-    this.drawLeg(ctx, w * 0.09, torsoBottom - 2, 27 - (4 - kneeLift), -legSwing);
+    // Небольшая центральная тень делает торс менее плоским.
+    ctx.fillStyle = "rgba(10, 30, 55, 0.16)";
+    roundedRectPath(ctx, -2, torsoTop + 2, 4, torsoBottom - torsoTop - 4, 4);
+    ctx.fill();
 
     const armSwing = this.grounded ? Math.sin(phase + Math.PI / 2) * 20 : 4;
-    this.drawArm(ctx, -w * 0.23, torsoTop + 12, 24, armSwing, false);
-    this.drawArm(ctx, w * 0.23, torsoTop + 12, 24, -armSwing, true);
+    this.drawArm(ctx, -w * 0.24, torsoTop + 12, 24, armSwing, false);
+    this.drawArm(ctx, w * 0.24, torsoTop + 12, 24, -armSwing, true);
   }
 
-  drawLeg(ctx, x, y, len, swing) {
+  drawLeg(ctx, hipX, hipY, cycle) {
     ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate((swing * Math.PI) / 180);
-    ctx.strokeStyle = "#194a79";
-    ctx.lineWidth = 8;
+    ctx.translate(hipX, hipY);
+    ctx.strokeStyle = "#174a78";
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
 
+    const airborne = !this.grounded;
+    const forward = cycle >= 0;
+    const lift = this.grounded ? Math.max(0, cycle) : 0.55;
+
+    // Персонаж бежит вправо: поднятое колено всегда уходит вперед, а не назад.
+    const kneeX = airborne ? 8 : (forward ? 10 + lift * 9 : -7 + cycle * 2);
+    const kneeY = airborne ? 22 : (forward ? 17 - lift * 4 : 25);
+    const footX = airborne ? 16 : (forward ? 18 + lift * 11 : -13 + cycle * 5);
+    const footY = airborne ? 37 : (forward ? 37 - lift * 3 : 43);
+
+    ctx.lineWidth = 8;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(0, len);
+    ctx.quadraticCurveTo(kneeX * 0.35, kneeY * 0.45, kneeX, kneeY);
     ctx.stroke();
 
     ctx.lineWidth = 7;
     ctx.beginPath();
-    ctx.moveTo(0, len);
-    ctx.lineTo(11, len + 10);
+    ctx.moveTo(kneeX, kneeY);
+    ctx.quadraticCurveTo((kneeX + footX) * 0.5, kneeY + 11, footX, footY);
+    ctx.stroke();
+
+    ctx.lineWidth = 5.5;
+    ctx.beginPath();
+    ctx.moveTo(footX - 1, footY);
+    ctx.lineTo(footX + (forward ? 17 : 10), footY + 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -413,7 +459,7 @@ class Player {
 
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(mirror ? 12 : -12, len);
+    ctx.quadraticCurveTo(mirror ? 7 : -7, len * 0.45, mirror ? 13 : -13, len);
     ctx.stroke();
     ctx.restore();
   }
@@ -520,46 +566,168 @@ class Obstacle {
     ctx.save();
     ctx.translate(this.x, this.y);
 
-    if (this.type.kind === "crate") {
-      ctx.fillStyle = "#7f552d";
-      ctx.fillRect(0, 0, this.width, this.height);
-      ctx.strokeStyle = "#b07a43";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(2, 2, this.width - 4, this.height - 4);
-      ctx.beginPath();
-      ctx.moveTo(4, 4);
-      ctx.lineTo(this.width - 4, this.height - 4);
-      ctx.moveTo(this.width - 4, 4);
-      ctx.lineTo(4, this.height - 4);
-      ctx.stroke();
+    if (this.type.kind === "paperPile") {
+      this.drawPaperPile(ctx);
     }
 
-    if (this.type.kind === "cone") {
-      ctx.fillStyle = "#ff8947";
-      ctx.beginPath();
-      ctx.moveTo(this.width / 2, 0);
-      ctx.lineTo(this.width, this.height);
-      ctx.lineTo(0, this.height);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(this.width * 0.18, this.height * 0.48, this.width * 0.64, 5);
+    if (this.type.kind === "paperStack") {
+      this.drawPaperStack(ctx);
     }
 
-    if (this.type.kind === "drone") {
+    if (this.type.kind === "flyingDoc") {
       const bob = Math.sin(time * 7 + this.phase) * 3;
       ctx.translate(0, bob);
-      ctx.fillStyle = "#606a86";
-      roundedRectPath(ctx, 0, 0, this.width, this.height, 10);
-      ctx.fill();
-      ctx.fillStyle = "#ffa44f";
-      ctx.beginPath();
-      ctx.arc(this.width * 0.35, this.height * 0.5, 6, 0, Math.PI * 2);
-      ctx.arc(this.width * 0.7, this.height * 0.5, 6, 0, Math.PI * 2);
-      ctx.fill();
+      this.drawFlyingDoc(ctx);
     }
 
     ctx.restore();
+  }
+
+  drawPaperSheet(ctx, x, y, w, h, angle, lineCount = 3) {
+    ctx.save();
+    ctx.translate(x + w / 2, y + h / 2);
+    ctx.rotate(angle);
+    ctx.fillStyle = "rgba(25, 54, 89, 0.16)";
+    roundedRectPath(ctx, -w / 2 + 2, -h / 2 + 3, w, h, 4);
+    ctx.fill();
+    ctx.fillStyle = "#fffdfa";
+    roundedRectPath(ctx, -w / 2, -h / 2, w, h, 4);
+    ctx.fill();
+    ctx.strokeStyle = "#cfddec";
+    ctx.lineWidth = 1.2;
+    roundedRectPath(ctx, -w / 2, -h / 2, w, h, 4);
+    ctx.stroke();
+    ctx.strokeStyle = "#7ea0c0";
+    ctx.lineWidth = 1.1;
+    for (let i = 0; i < lineCount; i++) {
+      const yy = -h * 0.22 + i * 6;
+      ctx.beginPath();
+      ctx.moveTo(-w * 0.3, yy);
+      ctx.lineTo(w * (0.2 + (i % 2) * 0.08), yy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawPaperPile(ctx) {
+    this.drawPaperSheet(ctx, 1, 10, this.width - 4, this.height - 14, -0.22, 3);
+    this.drawPaperSheet(ctx, 7, 5, this.width - 8, this.height - 13, 0.18, 3);
+    this.drawPaperSheet(ctx, 2, 0, this.width - 7, this.height - 12, -0.04, 4);
+  }
+
+  drawPaperStack(ctx) {
+    for (let i = 0; i < 5; i++) {
+      this.drawPaperSheet(ctx, 4 + (i % 2) * 2, this.height - 12 - i * 8, this.width - 8, 18, (i - 2) * 0.035, 1);
+    }
+    ctx.fillStyle = "rgba(27, 91, 148, 0.45)";
+    roundedRectPath(ctx, this.width * 0.28, this.height * 0.16, this.width * 0.44, 5, 3);
+    ctx.fill();
+  }
+
+  drawFlyingDoc(ctx) {
+    this.drawPaperSheet(ctx, 0, 0, this.width, this.height, -0.15, 2);
+    ctx.strokeStyle = "rgba(13, 138, 229, 0.42)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-18, this.height * 0.45);
+    ctx.lineTo(-5, this.height * 0.45);
+    ctx.moveTo(-24, this.height * 0.65);
+    ctx.lineTo(-8, this.height * 0.65);
+    ctx.stroke();
+  }
+}
+
+class TeaBonus {
+  constructor(game, x) {
+    this.game = game;
+    this.x = x;
+    this.width = 38;
+    this.height = 42;
+    this.y = game.groundY - 118 - Math.random() * 54;
+    this.phase = Math.random() * Math.PI * 2;
+    this.collected = false;
+  }
+
+  update(dt) {
+    this.x -= this.game.speed * dt;
+  }
+
+  getBounds() {
+    return {
+      x: this.x + 4,
+      y: this.y + 4,
+      width: this.width - 8,
+      height: this.height - 8,
+    };
+  }
+
+  draw(ctx, time) {
+    const bob = Math.sin(time * 5 + this.phase) * 4;
+    ctx.save();
+    ctx.translate(this.x, this.y + bob);
+    ctx.fillStyle = "rgba(20, 50, 80, 0.16)";
+    ctx.beginPath();
+    ctx.ellipse(this.width * 0.48, this.height + 3, 15, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(110, 195, 255, 0.6)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      const sx = 10 + i * 7;
+      ctx.moveTo(sx, 3);
+      ctx.quadraticCurveTo(sx - 5, -5, sx + 1, -11);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#f6fbff";
+    roundedRectPath(ctx, 6, 10, 24, 24, 6);
+    ctx.fill();
+    ctx.strokeStyle = "#1b5b94";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(30, 21, 8, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#c48a42";
+    ctx.beginPath();
+    ctx.ellipse(18, 14, 10, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+class TeaManager {
+  constructor(game) {
+    this.game = game;
+    this.items = [];
+    this.cooldown = this.nextCooldown();
+  }
+
+  nextCooldown() {
+    return CONFIG.teaSpawnMin + Math.random() * (CONFIG.teaSpawnMax - CONFIG.teaSpawnMin);
+  }
+
+  reset() {
+    this.items.length = 0;
+    this.cooldown = this.nextCooldown();
+  }
+
+  update(dt) {
+    this.cooldown -= dt;
+    if (this.cooldown <= 0) {
+      this.items.push(new TeaBonus(this.game, this.game.worldWidth + 80));
+      this.cooldown = this.nextCooldown();
+    }
+
+    for (const item of this.items) item.update(dt);
+    this.items = this.items.filter((item) => !item.collected && item.x + item.width > -10);
+  }
+
+  draw(ctx) {
+    for (const item of this.items) item.draw(ctx, this.game.time);
   }
 }
 
@@ -570,9 +738,9 @@ class ObstacleManager {
     this.cooldown = 0.86;
     this.lastType = null;
     this.types = [
-      { kind: "cone", width: 30, height: 46, minGap: 260, difficulty: 0 },
-      { kind: "crate", width: 40, height: 52, minGap: 300, difficulty: 0.2 },
-      { kind: "drone", width: 48, height: 30, minGap: 330, offsetY: -50, difficulty: 0.5 },
+      { kind: "paperPile", width: 42, height: 38, minGap: 265, difficulty: 0 },
+      { kind: "paperStack", width: 44, height: 52, minGap: 305, difficulty: 0.2 },
+      { kind: "flyingDoc", width: 46, height: 34, minGap: 340, offsetY: -54, difficulty: 0.5 },
     ];
   }
 
@@ -755,6 +923,7 @@ class Game {
     this.background = new Background(this);
     this.player = new Player(this, portraitTexture);
     this.obstacles = new ObstacleManager(this);
+    this.tea = new TeaManager(this);
     this.input = new InputController(this);
 
     this.state = "ready"; // ready, running, paused, gameover
@@ -767,6 +936,9 @@ class Game {
     this.hitFlash = 0;
     this.shake = 0;
     this.lastScoreMilestone = 0;
+    this.workdayElapsed = 0;
+    this.teaSlowTimer = 0;
+    this.gameOverReason = "hit";
 
     this.onResize();
     window.addEventListener("resize", this.onResize.bind(this));
@@ -805,6 +977,10 @@ class Game {
     this.lastScoreMilestone = 0;
     this.player.reset();
     this.obstacles.reset();
+    this.tea.reset();
+    this.workdayElapsed = 0;
+    this.teaSlowTimer = 0;
+    this.gameOverReason = "hit";
   }
 
   togglePause() {
@@ -815,8 +991,9 @@ class Game {
     }
   }
 
-  gameOver() {
+  gameOver(reason = "hit") {
     if (this.state !== "running") return;
+    this.gameOverReason = reason;
     this.state = "gameover";
     this.hitFlash = 1;
     this.shake = 14;
@@ -841,7 +1018,16 @@ class Game {
 
   update(dt) {
     this.time += dt;
-    this.speed += CONFIG.speedGrowth * dt;
+    this.workdayElapsed += dt;
+    if (this.workdayElapsed >= CONFIG.workdayDuration) {
+      this.workdayElapsed = CONFIG.workdayDuration;
+      this.gameOver("time");
+      return;
+    }
+
+    this.teaSlowTimer = Math.max(0, this.teaSlowTimer - dt);
+    const speedGrowthMul = this.teaSlowTimer > 0 ? 0.38 : 1;
+    this.speed += CONFIG.speedGrowth * speedGrowthMul * dt;
 
     this.distance += this.speed * dt;
     this.score = Math.floor(this.distance / 10);
@@ -854,16 +1040,37 @@ class Game {
     this.background.update(dt);
     this.player.update(dt);
     this.obstacles.update(dt);
+    this.tea.update(dt);
+
+    for (const mug of this.tea.items) {
+      if (!mug.collected && this.intersects(this.player.getBounds(), mug.getBounds())) {
+        mug.collected = true;
+        this.collectTea();
+      }
+    }
 
     for (const obs of this.obstacles.items) {
       if (this.intersects(this.player.getBounds(), obs.getBounds())) {
-        this.gameOver();
+        this.gameOver("hit");
         break;
       }
     }
 
     this.hitFlash = Math.max(0, this.hitFlash - dt * 2.6);
     this.shake = Math.max(0, this.shake - dt * 26);
+  }
+
+  collectTea() {
+    this.workdayElapsed = Math.max(0, this.workdayElapsed - CONFIG.teaTimeRewind);
+    this.speed = Math.max(CONFIG.baseSpeed * 0.92, this.speed * CONFIG.teaSlowdownFactor);
+    this.teaSlowTimer = CONFIG.teaSlowdownDuration;
+    this.distance += 150;
+    this.score = Math.floor(this.distance / 10);
+    this.audio.tea();
+  }
+
+  getWorkdayProgress() {
+    return clamp(this.workdayElapsed / CONFIG.workdayDuration, 0, 1);
   }
 
   intersects(a, b) {
@@ -881,6 +1088,7 @@ class Game {
 
     this.background.draw(ctx);
     this.obstacles.draw(ctx);
+    this.tea.draw(ctx);
     this.player.draw(ctx);
 
     if (this.hitFlash > 0) {
@@ -895,8 +1103,8 @@ class Game {
 
   drawHUD(ctx) {
     ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.84)";
-    roundedRectPath(ctx, 14, 12, 320, 74, 12);
+    ctx.fillStyle = "rgba(255,255,255,0.86)";
+    roundedRectPath(ctx, 14, 12, 398, 92, 12);
     ctx.fill();
 
     ctx.fillStyle = "#213a58";
@@ -905,8 +1113,31 @@ class Game {
 
     ctx.font = "600 16px Inter, sans-serif";
     ctx.fillStyle = "#446387";
-    ctx.fillText(`Рекорд: ${this.best}`, 28, 66);
-    ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, 176, 66);
+    ctx.fillText(`Рекорд: ${this.best}`, 28, 67);
+    ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, 176, 67);
+
+    const progress = this.getWorkdayProgress();
+    const timeLabel = formatWorkTime(progress);
+    ctx.fillStyle = "#213a58";
+    ctx.font = "800 18px Inter, sans-serif";
+    ctx.fillText(`Рабочий день: ${timeLabel}`, 28, 91);
+
+    const barX = 214;
+    const barY = 80;
+    const barW = 178;
+    const barH = 10;
+    ctx.fillStyle = "rgba(27, 91, 148, 0.16)";
+    roundedRectPath(ctx, barX, barY, barW, barH, 5);
+    ctx.fill();
+    ctx.fillStyle = progress > 0.78 ? "#d96b4b" : "#0d8ae5";
+    roundedRectPath(ctx, barX, barY, barW * progress, barH, 5);
+    ctx.fill();
+
+    if (this.teaSlowTimer > 0) {
+      ctx.fillStyle = "#0b78c5";
+      ctx.font = "700 14px Inter, sans-serif";
+      ctx.fillText("☕ чай: темп ниже", 274, 42);
+    }
     ctx.restore();
   }
 
@@ -927,13 +1158,11 @@ class Game {
     }
 
     if (this.state === "gameover") {
-      this.drawOverlayText(
-        ctx,
-        "Game Over",
-        "Enter / Space / Клик / Тап — рестарт",
-        0.96,
-        true
-      );
+      const title = this.gameOverReason === "time" ? "Рабочий день закончился" : "Game Over";
+      const subtitle = this.gameOverReason === "time"
+        ? "ГИП дождался 17:30. Enter / Space / Клик — новый забег"
+        : "Enter / Space / Клик / Тап — рестарт";
+      this.drawOverlayText(ctx, title, subtitle, 0.96, true);
     }
   }
 
