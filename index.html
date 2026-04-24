@@ -30,7 +30,7 @@
         <div class="leaderboard-head">
           <div>
             <h2>Таблица лидеров</h2>
-            <p>Рекорды сохраняются в браузере игрока.</p>
+            <p id="leaderboardStatus">Общая онлайн-таблица лидеров загружается...</p>
           </div>
           <label class="player-name-label">
             Имя игрока
@@ -57,6 +57,8 @@
 
     <button id="duckBtn" class="duck-mobile" type="button" aria-label="Скольжение">Slide</button>
 
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
     <script src="game.js"></script>
   </body>
 </html>
