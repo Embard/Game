@@ -2,23 +2,18 @@
 
 const CONFIG = {
   gravity: 2180,
-  jumpForce: 790,
-  baseSpeed: 310,
-  speedGrowth: 5.9,
+  jumpForce: 800,
+  baseSpeed: 315,
+  speedGrowth: 6.2,
   obstacleFrequency: 1.0,
   maxDt: 0.033,
   groundHeight: 82,
-
-  // 08:00 -> 17:30. Сделано медленнее, чтобы игра не заканчивалась слишком быстро.
-  workdayDuration: 24.0,
-
-  // Чай появляется чаще, чем в прошлой версии.
-  teaSpawnMin: 2.7,
-  teaSpawnMax: 4.2,
-  teaTimeRewind: 2.05,
+  workdayDuration: 25.0,
+  teaSpawnMin: 2.8,
+  teaSpawnMax: 4.4,
+  teaTimeRewind: 2.2,
   teaSlowdownFactor: 0.84,
-  teaSlowdownDuration: 3.0,
-
+  teaSlowdownDuration: 3.2,
   photo: {
     path: "assets/player-photo.jpg",
     focusX: 0.15,
@@ -30,10 +25,55 @@ const CONFIG = {
   },
 };
 
-const STORAGE_KEY = "gip-runner-best-v3";
+const STORAGE_KEY = "gip-runner-best";
+
+const RUN_CYCLE = [
+  { t: 0.0, thigh: 24, shin: 8, foot: -8, upperArm: -28, foreArm: -8 },
+  { t: 0.125, thigh: 12, shin: -2, foot: -2, upperArm: -18, foreArm: -2 },
+  { t: 0.25, thigh: -4, shin: -20, foot: 8, upperArm: 2, foreArm: 16 },
+  { t: 0.375, thigh: -18, shin: -42, foot: 18, upperArm: 18, foreArm: 28 },
+  { t: 0.5, thigh: -30, shin: -16, foot: 10, upperArm: 30, foreArm: 18 },
+  { t: 0.625, thigh: -14, shin: 8, foot: 2, upperArm: 14, foreArm: 4 },
+  { t: 0.75, thigh: 6, shin: 28, foot: -12, upperArm: -2, foreArm: -8 },
+  { t: 0.875, thigh: 22, shin: 12, foot: -14, upperArm: -24, foreArm: -10 },
+  { t: 1.0, thigh: 24, shin: 8, foot: -8, upperArm: -28, foreArm: -8 },
+];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function wrap01(value) {
+  let v = value % 1;
+  if (v < 0) v += 1;
+  return v;
+}
+
+function sampleCycle(frames, phase) {
+  const p = wrap01(phase);
+  for (let i = 0; i < frames.length - 1; i++) {
+    const a = frames[i];
+    const b = frames[i + 1];
+    if (p >= a.t && p <= b.t) {
+      const localT = (p - a.t) / Math.max(0.0001, b.t - a.t);
+      return {
+        thigh: lerp(a.thigh, b.thigh, localT),
+        shin: lerp(a.shin, b.shin, localT),
+        foot: lerp(a.foot, b.foot, localT),
+        upperArm: lerp(a.upperArm, b.upperArm, localT),
+        foreArm: lerp(a.foreArm, b.foreArm, localT),
+      };
+    }
+  }
+  return { ...frames[0] };
+}
+
+function degToRad(deg) {
+  return (deg * Math.PI) / 180;
 }
 
 function roundedRectPath(ctx, x, y, width, height, radius) {
@@ -84,6 +124,7 @@ class AudioEngine {
 
     osc.type = type;
     osc.frequency.setValueAtTime(frequency, now);
+
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
@@ -184,10 +225,12 @@ class Background {
   }
 
   spawnCloud(minX = this.game.worldWidth + 40) {
+    const y = 30 + Math.random() * 120;
+    const scale = 0.6 + Math.random() * 0.9;
     this.clouds.push({
       x: minX + Math.random() * 220,
-      y: 30 + Math.random() * 120,
-      scale: 0.6 + Math.random() * 0.9,
+      y,
+      scale,
       speedMul: 0.18 + Math.random() * 0.18,
     });
   }
@@ -268,7 +311,7 @@ class Player {
     this.x = 160;
     this.width = 82;
     this.standHeight = 122;
-    this.duckHeight = 70;
+    this.duckHeight = 72;
 
     this.height = this.standHeight;
     this.y = this.game.groundY - this.height;
@@ -320,7 +363,9 @@ class Player {
 
     const floor = this.game.groundY - this.height;
     if (this.y >= floor) {
-      if (!this.lastGrounded) this.squash = 1;
+      if (!this.lastGrounded) {
+        this.squash = 1;
+      }
       this.y = floor;
       this.vy = 0;
       this.grounded = true;
@@ -337,52 +382,144 @@ class Player {
   getBounds() {
     if (this.ducking && this.grounded) {
       return {
-        x: this.x + 15,
+        x: this.x + 16,
         y: this.y + 16,
-        width: this.width - 26,
-        height: this.height - 14,
+        width: this.width - 28,
+        height: this.height - 18,
       };
     }
 
     return {
       x: this.x + 14,
-      y: this.y + 3,
-      width: this.width - 28,
-      height: this.height - 8,
+      y: this.y + 10,
+      width: this.width - 26,
+      height: this.height - 12,
     };
   }
 
   draw(ctx) {
     ctx.save();
 
-    const bob = this.grounded ? Math.sin(this.runTime * 11) * 1.2 : 0;
-    const tilt = this.grounded ? 0 : clamp(this.vy / 2300, -0.18, 0.18);
-    const stretch = this.grounded ? 1 - this.squash * 0.1 : 1 + Math.min(0.06, Math.abs(this.vy) / 2500);
-    const widthScale = this.grounded ? 1 + this.squash * 0.1 : 1 - Math.min(0.05, Math.abs(this.vy) / 2700);
+    const bob = this.grounded ? Math.sin(this.runTime * 12) * 1.1 : 0;
+    const jumpTilt = this.grounded ? 0 : clamp(this.vy / 2300, -0.12, 0.08);
+    const runLean = this.ducking ? -0.2 : -0.12;
+    const squashY = this.grounded ? 1 - this.squash * 0.1 : 1 + Math.min(0.06, Math.abs(this.vy) / 2600);
+    const squashX = this.grounded ? 1 + this.squash * 0.1 : 1 - Math.min(0.04, Math.abs(this.vy) / 2800);
 
     ctx.translate(this.x + this.width / 2, this.y + this.height / 2 + bob);
-    ctx.rotate(tilt);
-    ctx.scale(widthScale, stretch);
+    ctx.rotate(runLean + jumpTilt);
+    ctx.scale(squashX, squashY);
 
-    this.drawBody(ctx);
-    this.drawHead(ctx);
-
+    this.drawFigure(ctx);
     ctx.restore();
   }
 
-  drawBody(ctx) {
+  getLegPose(phase) {
+    if (this.ducking && this.grounded) {
+      return { thigh: 35, shin: 82, foot: 8 };
+    }
+
+    if (!this.grounded) {
+      if (this.vy < -40) {
+        return phase < 0.5
+          ? { thigh: 22, shin: 42, foot: -16 }
+          : { thigh: -30, shin: -12, foot: 14 };
+      }
+      return phase < 0.5
+        ? { thigh: 12, shin: 8, foot: -2 }
+        : { thigh: -12, shin: -4, foot: 6 };
+    }
+
+    return sampleCycle(RUN_CYCLE, phase);
+  }
+
+  getArmPose(phase) {
+    if (this.ducking && this.grounded) {
+      return { upperArm: 38, foreArm: 68 };
+    }
+
+    if (!this.grounded) {
+      return phase < 0.5
+        ? { upperArm: -12, foreArm: 18 }
+        : { upperArm: 22, foreArm: 46 };
+    }
+
+    return sampleCycle(RUN_CYCLE, phase);
+  }
+
+  computeLeg(hipX, hipY, pose) {
+    const thighLen = 26;
+    const shinLen = 28;
+    const footLen = 14;
+
+    const thighTheta = degToRad(90 - pose.thigh);
+    const kneeX = hipX + Math.cos(thighTheta) * thighLen;
+    const kneeY = hipY + Math.sin(thighTheta) * thighLen;
+
+    const shinTheta = degToRad(90 - pose.shin);
+    const ankleX = kneeX + Math.cos(shinTheta) * shinLen;
+    const ankleY = kneeY + Math.sin(shinTheta) * shinLen;
+
+    const footTheta = degToRad(-pose.foot);
+    const toeX = ankleX + Math.cos(footTheta) * footLen;
+    const toeY = ankleY + Math.sin(footTheta) * footLen;
+
+    return { hipX, hipY, kneeX, kneeY, ankleX, ankleY, toeX, toeY };
+  }
+
+  computeArm(shoulderX, shoulderY, pose) {
+    const upperLen = 20;
+    const foreLen = 17;
+
+    const upperTheta = degToRad(90 - pose.upperArm);
+    const elbowX = shoulderX + Math.cos(upperTheta) * upperLen;
+    const elbowY = shoulderY + Math.sin(upperTheta) * upperLen;
+
+    const foreTheta = degToRad(90 - pose.foreArm);
+    const handX = elbowX + Math.cos(foreTheta) * foreLen;
+    const handY = elbowY + Math.sin(foreTheta) * foreLen;
+
+    return { shoulderX, shoulderY, elbowX, elbowY, handX, handY };
+  }
+
+  drawFigure(ctx) {
     const w = this.width;
     const h = this.height;
-    const duck = this.ducking && this.grounded;
+    const phase = wrap01(this.runTime * 1.65);
 
-    const torsoTop = duck ? -h * 0.2 : -h * 0.14;
-    const torsoHeight = duck ? h * 0.42 : h * 0.38;
+    const torsoTop = -h * 0.16 + (this.ducking ? 10 : 0);
+    const torsoHeight = this.ducking ? 34 : 50;
     const torsoBottom = torsoTop + torsoHeight;
-    const hipY = torsoBottom - 1;
-    const shoulderY = torsoTop + 14;
+    const shoulderY = torsoTop + 10;
+    const hipY = torsoBottom - 2;
+
+    const leftHipX = -w * 0.1;
+    const rightHipX = w * 0.06;
+    const leftShoulderX = -w * 0.18;
+    const rightShoulderX = w * 0.18;
+
+    const leftLeg = this.computeLeg(leftHipX, hipY, this.getLegPose(phase));
+    const rightLeg = this.computeLeg(rightHipX, hipY, this.getLegPose(phase + 0.5));
+    const leftArm = this.computeArm(leftShoulderX, shoulderY, this.getArmPose(phase + 0.5));
+    const rightArm = this.computeArm(rightShoulderX, shoulderY, this.getArmPose(phase));
+
+    const legs = [leftLeg, rightLeg].sort((a, b) => a.toeX - b.toeX);
+    const arms = [leftArm, rightArm].sort((a, b) => a.handX - b.handX);
+
+    this.drawArmLimb(ctx, arms[0], true);
+    this.drawLegLimb(ctx, legs[0], true);
+    this.drawTorso(ctx, torsoTop, torsoHeight);
+    this.drawLegLimb(ctx, legs[1], false);
+    this.drawArmLimb(ctx, arms[1], false);
+    this.drawHead(ctx, 0, -h * 0.34 + (this.ducking ? 8 : 0));
+  }
+
+  drawTorso(ctx, torsoTop, torsoHeight) {
+    const w = this.width;
+    const torsoBottom = torsoTop + torsoHeight;
 
     ctx.save();
-    roundedRectPath(ctx, -w * 0.23, torsoTop, w * 0.46, torsoHeight, 13);
+    roundedRectPath(ctx, -w * 0.22, torsoTop, w * 0.44, torsoHeight, 14);
     ctx.clip();
 
     const shirt = ctx.createLinearGradient(0, torsoTop, 0, torsoBottom);
@@ -409,123 +546,49 @@ class Player {
     ctx.restore();
 
     ctx.fillStyle = "#15385f";
-    roundedRectPath(ctx, -w * 0.17, hipY - 4, w * 0.34, 12, 6);
+    roundedRectPath(ctx, -w * 0.17, torsoBottom - 5, w * 0.34, 11, 6);
+    ctx.fill();
+  }
+
+  drawLegLimb(ctx, limb, back) {
+    ctx.strokeStyle = back ? "#214f7c" : "#1a4a75";
+    ctx.lineWidth = back ? 7 : 8;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    ctx.beginPath();
+    ctx.moveTo(limb.hipX, limb.hipY);
+    ctx.lineTo(limb.kneeX, limb.kneeY);
+    ctx.lineTo(limb.ankleX, limb.ankleY);
+    ctx.stroke();
+
+    ctx.fillStyle = back ? "#244d77" : "#173f65";
+    ctx.beginPath();
+    ctx.arc(limb.kneeX, limb.kneeY, back ? 2.6 : 3.2, 0, Math.PI * 2);
     ctx.fill();
 
-    const phase = this.runTime * 11.5;
-
-    if (duck) {
-      this.drawCrouchLeg(ctx, -w * 0.1, hipY, -1);
-      this.drawCrouchLeg(ctx, w * 0.1, hipY, 1);
-    } else {
-      const leftA = Math.sin(phase);
-      const rightA = Math.sin(phase + Math.PI);
-      this.drawRunnerLeg(ctx, -w * 0.1, hipY, leftA);
-      this.drawRunnerLeg(ctx, w * 0.1, hipY, rightA);
-    }
-
-    const armSwing = duck ? 0.45 : Math.sin(phase + Math.PI) * 0.9;
-    this.drawRunnerArm(ctx, -w * 0.25, shoulderY, -armSwing, -1, duck);
-    this.drawRunnerArm(ctx, w * 0.25, shoulderY, armSwing, 1, duck);
+    ctx.strokeStyle = "#163a5d";
+    ctx.lineWidth = back ? 5 : 6;
+    ctx.beginPath();
+    ctx.moveTo(limb.ankleX, limb.ankleY);
+    ctx.lineTo(limb.toeX, limb.toeY);
+    ctx.stroke();
   }
 
-  drawRunnerLeg(ctx, hipX, hipY, phaseValue) {
-    // Скелетная двухсегментная нога: бедро + голень. Колено всегда сгибается вперёд по ходу движения,
-    // стопа стоит на земле или уходит назад, без вывернутых коленей.
-    const thighLen = 27;
-    const shinLen = 29;
-
-    const thighAngle = Math.PI / 2 + phaseValue * 0.55;
-    const kneeX = hipX + Math.cos(thighAngle) * thighLen;
-    const kneeY = hipY + Math.sin(thighAngle) * thighLen;
-
-    const footForward = phaseValue * 18;
-    const footX = hipX + footForward;
-    const footY = hipY + thighLen + shinLen - 2;
-
-    const bendDir = phaseValue >= 0 ? 1 : -1;
-    const bendAmount = 8 + Math.abs(phaseValue) * 8;
-    const targetX = footX + bendDir * bendAmount;
-    const targetY = footY;
-
-    const dx = targetX - kneeX;
-    const dy = targetY - kneeY;
-    const d = Math.max(0.001, Math.hypot(dx, dy));
-    const ankleX = kneeX + dx * (shinLen / d);
-    const ankleY = kneeY + dy * (shinLen / d);
-
-    ctx.strokeStyle = "#1b4e7c";
-    ctx.lineWidth = 8;
+  drawArmLimb(ctx, limb, back) {
+    ctx.strokeStyle = back ? "#2c679f" : "#1c5a91";
+    ctx.lineWidth = back ? 5 : 6;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(hipX, hipY);
-    ctx.lineTo(kneeX, kneeY);
-    ctx.lineTo(ankleX, ankleY);
-    ctx.stroke();
-
-    ctx.fillStyle = "#153a5f";
-    ctx.beginPath();
-    ctx.arc(kneeX, kneeY, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "#153a5f";
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(ankleX - 3, ankleY);
-    ctx.lineTo(ankleX + 13, ankleY + 1);
+    ctx.moveTo(limb.shoulderX, limb.shoulderY);
+    ctx.lineTo(limb.elbowX, limb.elbowY);
+    ctx.lineTo(limb.handX, limb.handY);
     ctx.stroke();
   }
 
-  drawCrouchLeg(ctx, hipX, hipY, side) {
-    const kneeX = hipX + side * 13;
-    const kneeY = hipY + 21;
-    const ankleX = hipX + side * 29;
-    const ankleY = kneeY + 22;
-
-    ctx.strokeStyle = "#1b4e7c";
-    ctx.lineWidth = 8;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(hipX, hipY);
-    ctx.lineTo(kneeX, kneeY);
-    ctx.lineTo(ankleX, ankleY);
-    ctx.stroke();
-
-    ctx.strokeStyle = "#153a5f";
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(ankleX - 4, ankleY);
-    ctx.lineTo(ankleX + 13, ankleY + 1);
-    ctx.stroke();
-  }
-
-  drawRunnerArm(ctx, shoulderX, shoulderY, swing, side, duck) {
-    const upperLen = duck ? 18 : 21;
-    const lowerLen = duck ? 17 : 20;
-    const upperAngle = Math.PI / 2 + side * 0.18 + swing * 0.55;
-    const elbowX = shoulderX + Math.cos(upperAngle) * upperLen;
-    const elbowY = shoulderY + Math.sin(upperAngle) * upperLen;
-
-    const handX = elbowX + side * (duck ? 12 : 10);
-    const handY = elbowY + lowerLen - (duck ? 7 : 1);
-
-    ctx.strokeStyle = "#1b5b94";
-    ctx.lineWidth = 6;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY);
-    ctx.lineTo(elbowX, elbowY);
-    ctx.lineTo(handX, handY);
-    ctx.stroke();
-  }
-
-  drawHead(ctx) {
+  drawHead(ctx, cx, cy) {
     const headRadius = 28;
-    const cx = 0;
-    const cy = -this.height * 0.32 + (this.ducking ? 8 : 0);
 
     ctx.fillStyle = "rgba(0,0,0,0.12)";
     ctx.beginPath();
@@ -607,13 +670,11 @@ class Obstacle {
   }
 
   getBounds() {
-    const insetX = this.type.hitInsetX || 4;
-    const insetY = this.type.hitInsetY || 4;
     return {
-      x: this.x + insetX,
-      y: this.y + insetY,
-      width: this.width - 2 * insetX,
-      height: this.height - 2 * insetY,
+      x: this.x + (this.type.hitInsetX || 4),
+      y: this.y + (this.type.hitInsetY || 4),
+      width: this.width - 2 * (this.type.hitInsetX || 4),
+      height: this.height - 2 * (this.type.hitInsetY || 4),
     };
   }
 
@@ -643,7 +704,6 @@ class Obstacle {
       roundedRectPath(ctx, 0, 8, this.width - 10, this.height - 14, 4);
       ctx.fill();
       ctx.stroke();
-
       ctx.fillStyle = "rgba(138, 167, 205, 0.6)";
       for (let y = 16; y < this.height - 8; y += 7) {
         ctx.fillRect(6, y, this.width - 22, 1.2);
@@ -653,29 +713,27 @@ class Obstacle {
   }
 
   drawFlyingPapers(ctx, time) {
-    const bob = Math.sin(time * 8 + this.phase) * 4;
+    const bob = Math.sin(time * 8 + this.phase) * 3;
     ctx.translate(0, bob);
 
     for (let i = 0; i < 2; i++) {
       ctx.save();
-      ctx.translate(i * 22, i * 7);
-      ctx.rotate((Math.sin(time * 7 + this.phase + i) * 10 - 12) * Math.PI / 180);
+      ctx.translate(i * 18, i * 4);
+      ctx.rotate((Math.sin(time * 7 + this.phase + i) * 10 - 10) * Math.PI / 180);
       ctx.fillStyle = "#ffffff";
       ctx.strokeStyle = "#bed0e4";
       ctx.lineWidth = 1.5;
-      roundedRectPath(ctx, 0, 0, 38, 27, 4);
+      roundedRectPath(ctx, 0, 0, 34, 24, 4);
       ctx.fill();
       ctx.stroke();
-
       ctx.fillStyle = "rgba(139, 167, 199, 0.65)";
-      for (let y = 7; y < 22; y += 5) {
-        ctx.fillRect(5, y, 23, 1.2);
+      for (let y = 6; y < 20; y += 5) {
+        ctx.fillRect(5, y, 20, 1.2);
       }
-
       ctx.beginPath();
-      ctx.moveTo(27, 0);
-      ctx.lineTo(38, 11);
-      ctx.lineTo(27, 11);
+      ctx.moveTo(25, 0);
+      ctx.lineTo(34, 9);
+      ctx.lineTo(25, 9);
       ctx.closePath();
       ctx.fillStyle = "#edf4fb";
       ctx.fill();
@@ -723,20 +781,6 @@ class Obstacle {
 
     ctx.fillStyle = "#26384d";
     ctx.fillRect(this.width * 0.38, bodyTop + 10, this.width * 0.25, 4);
-
-    ctx.save();
-    ctx.translate(this.width * 0.86, bodyTop + 8);
-    ctx.fillStyle = "#ffffff";
-    ctx.strokeStyle = "#b7c8df";
-    ctx.lineWidth = 1.2;
-    roundedRectPath(ctx, 0, 0, 18, 23, 3);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#8ca8cc";
-    ctx.fillRect(4, 6, 10, 1.2);
-    ctx.fillRect(4, 11, 10, 1.2);
-    ctx.fillRect(4, 16, 8, 1.2);
-    ctx.restore();
   }
 }
 
@@ -759,24 +803,23 @@ class ObstacleManager {
       },
       {
         kind: "paperHigh",
-        width: 66,
-        height: 42,
-        minGap: 255,
+        width: 58,
+        height: 30,
+        minGap: 265,
         difficulty: 0.12,
         behavior: "duck",
-        // Верхние листы: стоя задеваешь головой/плечами, пригнувшись проходишь под ними.
-        offsetY: -92,
+        offsetY: -110,
         hitInsetX: 5,
-        hitInsetY: 4,
+        hitInsetY: 3,
       },
       {
         kind: "customer",
-        width: 50,
-        height: 82,
-        minGap: 300,
-        difficulty: 0.2,
+        width: 48,
+        height: 80,
+        minGap: 295,
+        difficulty: 0.24,
         behavior: "jump",
-        hitInsetX: 8,
+        hitInsetX: 7,
         hitInsetY: 5,
       },
     ];
@@ -793,9 +836,9 @@ class ObstacleManager {
     let pool = this.types.filter((t) => t.difficulty <= level * 0.55 + 0.35);
     if (!pool.length) pool = this.types.slice();
 
-    if (Math.random() < 0.38) {
-      const duckTypes = pool.filter((t) => t.behavior === "duck");
-      if (duckTypes.length) pool = duckTypes.concat(pool);
+    if (Math.random() < 0.4) {
+      const duckOnly = pool.filter((t) => t.behavior === "duck");
+      if (duckOnly.length) pool = duckOnly.concat(pool);
     }
 
     const available = pool.filter((t) => t.kind !== this.lastType);
@@ -814,8 +857,8 @@ class ObstacleManager {
 
       const speedFactor = this.game.speed / CONFIG.baseSpeed;
       const baseGap = type.minGap / Math.max(1, speedFactor * 0.88);
-      const randomGap = 75 + Math.random() * 150;
-      const gapDistance = Math.max(195, baseGap + randomGap);
+      const randomGap = 80 + Math.random() * 150;
+      const gapDistance = Math.max(190, baseGap + randomGap);
       this.cooldown = gapDistance / this.game.speed / CONFIG.obstacleFrequency;
     }
 
@@ -834,7 +877,7 @@ class TeaPickup {
     this.width = 34;
     this.height = 34;
     this.x = x;
-    this.y = game.groundY - 104 - Math.random() * 34;
+    this.y = game.groundY - 116 - Math.random() * 22;
     this.phase = Math.random() * Math.PI * 2;
   }
 
@@ -904,7 +947,7 @@ class TeaManager {
 
   reset() {
     this.items.length = 0;
-    this.cooldown = 2.0;
+    this.cooldown = 1.8;
   }
 
   update(dt) {
@@ -1033,7 +1076,7 @@ class InputController {
           document.exitFullscreen();
         }
       } catch {
-        // Игра продолжит работать и без fullscreen.
+        // Fullscreen не обязателен для работы игры.
       }
     });
   }
@@ -1147,7 +1190,7 @@ class Game {
     this.teaManager.items.splice(index, 1);
     this.teaCount += 1;
     this.workProgress = Math.max(0, this.workProgress - CONFIG.teaTimeRewind);
-    this.speed = Math.max(CONFIG.baseSpeed * 0.88, this.speed * CONFIG.teaSlowdownFactor);
+    this.speed = Math.max(CONFIG.baseSpeed * 0.92, this.speed * CONFIG.teaSlowdownFactor);
     this.slowTimer = Math.max(this.slowTimer, CONFIG.teaSlowdownDuration);
     this.audio.tea();
   }
@@ -1166,7 +1209,6 @@ class Game {
   update(dt) {
     this.time += dt;
     this.workProgress += dt;
-
     if (this.workProgress >= CONFIG.workdayDuration) {
       this.workProgress = CONFIG.workdayDuration;
       this.finishDay();
@@ -1240,34 +1282,34 @@ class Game {
 
   drawHUD(ctx) {
     ctx.save();
-
+    const panelW = 458;
+    const panelH = 112;
     const panelX = 14;
     const panelY = 12;
-    const panelW = 460;
-    const panelH = 112;
 
     ctx.fillStyle = "rgba(255,255,255,0.88)";
     roundedRectPath(ctx, panelX, panelY, panelW, panelH, 14);
     ctx.fill();
 
     ctx.fillStyle = "#213a58";
-    ctx.font = "700 20px Inter, sans-serif";
-    ctx.fillText(`Счёт: ${this.score}`, panelX + 14, panelY + 27);
+    ctx.font = "700 21px Inter, sans-serif";
+    ctx.fillText(`Счёт: ${this.score}`, panelX + 14, panelY + 28);
 
     ctx.font = "600 15px Inter, sans-serif";
     ctx.fillStyle = "#446387";
-    ctx.fillText(`Рекорд: ${this.best}`, panelX + 14, panelY + 52);
-    ctx.fillText(`Чай: ${this.teaCount}`, panelX + 124, panelY + 52);
-    ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, panelX + 200, panelY + 52);
+    ctx.fillText(`Рекорд: ${this.best}`, panelX + 14, panelY + 50);
+    ctx.fillText(`Чай: ${this.teaCount}`, panelX + 120, panelY + 50);
+    ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, panelX + 194, panelY + 50);
 
-    const progressRatio = this.workProgress / CONFIG.workdayDuration;
-
-    ctx.font = "800 18px Inter, sans-serif";
     ctx.fillStyle = "#1e4269";
-    ctx.fillText(`Рабочий день: ${formatWorkTime(progressRatio)}`, panelX + 14, panelY + 80);
+    ctx.font = "700 16px Inter, sans-serif";
+    ctx.fillText("Рабочий день", panelX + 14, panelY + 74);
+
+    ctx.font = "800 20px Inter, sans-serif";
+    ctx.fillText(formatWorkTime(this.workProgress / CONFIG.workdayDuration), panelX + 136, panelY + 74);
 
     const barX = panelX + 14;
-    const barY = panelY + 91;
+    const barY = panelY + 84;
     const barW = panelW - 28;
     const barH = 12;
 
@@ -1276,7 +1318,7 @@ class Game {
     ctx.fill();
 
     ctx.fillStyle = this.slowTimer > 0 ? "#67b7ff" : "#3f78c4";
-    roundedRectPath(ctx, barX, barY, barW * clamp(progressRatio, 0, 1), barH, 8);
+    roundedRectPath(ctx, barX, barY, barW * clamp(this.workProgress / CONFIG.workdayDuration, 0, 1), barH, 8);
     ctx.fill();
 
     ctx.restore();
@@ -1289,7 +1331,7 @@ class Game {
       this.drawOverlayText(
         ctx,
         "Нажми пробел или тапни, чтобы начать",
-        "Прыгай через заказчиков и стопки бумаги, пригибайся под летящими листами, лови чай",
+        "Прыгай через заказчиков и стопки бумаги, пригибайся под летящими листами и лови чай",
         pulse
       );
     }
@@ -1315,7 +1357,7 @@ class Game {
 
     ctx.globalAlpha = 1;
     ctx.fillStyle = "rgba(255,255,255,0.96)";
-    roundedRectPath(ctx, this.worldWidth / 2 - 330, this.worldHeight / 2 - 82, 660, 164, 18);
+    roundedRectPath(ctx, this.worldWidth / 2 - 320, this.worldHeight / 2 - 82, 640, 164, 18);
     ctx.fill();
 
     ctx.fillStyle = danger ? "#d62828" : success ? "#1f8d5a" : "#194776";
@@ -1324,7 +1366,7 @@ class Game {
     ctx.fillText(title, this.worldWidth / 2, this.worldHeight / 2 - 14);
 
     ctx.fillStyle = "#365a80";
-    ctx.font = "600 17px Inter, sans-serif";
+    ctx.font = "600 18px Inter, sans-serif";
     ctx.fillText(subtitle, this.worldWidth / 2, this.worldHeight / 2 + 24);
 
     ctx.textAlign = "start";
