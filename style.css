@@ -1,10 +1,10 @@
 :root {
-  --bg: #ecf6ff;
-  --panel: rgba(255, 255, 255, 0.88);
+  --bg: #e9f4ff;
+  --panel: rgba(255, 255, 255, 0.9);
   --text: #223047;
   --accent: #0d8ae5;
   --accent-soft: #6ec3ff;
-  --line: rgba(15, 40, 80, 0.2);
+  --line: rgba(15, 40, 80, 0.18);
 }
 
 * {
@@ -17,7 +17,10 @@ body {
   min-height: 100%;
   font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 20% 10%, #f8fcff, var(--bg));
+  background:
+    radial-gradient(circle at 18% 10%, #f8fcff 0%, rgba(248, 252, 255, 0.9) 20%, transparent 46%),
+    radial-gradient(circle at 85% 0%, rgba(198, 226, 255, 0.75), transparent 34%),
+    linear-gradient(180deg, #eff7ff 0%, var(--bg) 100%);
 }
 
 body {
@@ -33,20 +36,32 @@ body {
   gap: 14px;
 }
 
-.hud {
+.hud,
+.help,
+.leaderboard-panel,
+.character-panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 14px 16px;
   backdrop-filter: blur(6px);
+  box-shadow: 0 10px 24px rgba(21, 63, 117, 0.08);
+}
+
+.hud h1,
+.help h2,
+.leaderboard-head h2,
+.character-head h2 {
+  margin: 0;
 }
 
 .hud h1 {
-  margin: 0;
-  font-size: clamp(1.4rem, 2.2vw, 2rem);
+  font-size: clamp(1.4rem, 2.1vw, 2rem);
 }
 
-.subtitle {
+.subtitle,
+.character-head p,
+.leaderboard-head p {
   margin: 4px 0 0;
   color: #4f6482;
 }
@@ -55,16 +70,16 @@ body {
   position: relative;
   background: linear-gradient(180deg, #f7fbff 0%, #eaf5ff 60%, #deeeff 100%);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px;
-  box-shadow: 0 10px 24px rgba(21, 63, 117, 0.12);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 12px 28px rgba(21, 63, 117, 0.14);
 }
 
 #gameCanvas {
   width: 100%;
+  max-width: 100%;
   height: auto;
-  min-height: 420px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: transparent;
   display: block;
 }
@@ -97,20 +112,8 @@ body {
   transform: translateY(1px);
 }
 
-.help {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-
-.help h2 {
-  margin: 0 0 8px;
-  font-size: 1.1rem;
-}
-
 .help ul {
-  margin: 0;
+  margin: 8px 0 0;
   padding-left: 20px;
   display: grid;
   gap: 6px;
@@ -146,45 +149,13 @@ kbd {
   transform: scale(0.97);
 }
 
-@media (max-width: 840px) {
-  #gameCanvas {
-    min-height: 260px;
-  }
-
-  body {
-    padding: 10px;
-  }
-
-  .duck-mobile {
-    display: block;
-  }
-}
-
-
-.leaderboard-panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px 16px;
-  backdrop-filter: blur(6px);
-}
-
-.leaderboard-head {
+.leaderboard-head,
+.character-head {
   display: flex;
   gap: 16px;
   justify-content: space-between;
   align-items: flex-start;
   flex-wrap: wrap;
-}
-
-.leaderboard-head h2 {
-  margin: 0 0 4px;
-  font-size: 1.1rem;
-}
-
-.leaderboard-head p {
-  margin: 0;
-  color: #4f6482;
 }
 
 .player-name-label {
@@ -238,39 +209,6 @@ kbd {
   justify-content: flex-start !important;
 }
 
-.leaderboard-head p#leaderboardStatus {
-  margin: 4px 0 0;
-  color: #4f6482;
-  font-size: 0.95rem;
-}
-
-
-.character-panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px 16px;
-  backdrop-filter: blur(6px);
-}
-
-.character-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.character-head h2 {
-  margin: 0 0 4px;
-  font-size: 1.1rem;
-}
-
-.character-head p {
-  margin: 0;
-  color: #4f6482;
-}
-
 .character-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -280,7 +218,7 @@ kbd {
 .character-card {
   border: 1px solid rgba(15, 40, 80, 0.14);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.7);
   padding: 10px;
   display: grid;
   grid-template-columns: 72px 1fr;
@@ -324,4 +262,18 @@ kbd {
 .character-card span {
   color: #4f6482;
   font-size: 0.88rem;
+}
+
+@media (max-width: 840px) {
+  body {
+    padding: 10px;
+  }
+
+  .duck-mobile {
+    display: block;
+  }
+
+  .player-name-label input {
+    width: min(220px, 100%);
+  }
 }
