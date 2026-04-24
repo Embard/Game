@@ -8,12 +8,13 @@ const CONFIG = {
   obstacleFrequency: 1.0,
   maxDt: 0.033,
   groundHeight: 82,
-  workdayDuration: 52.0,
-  teaSpawnMin: 4.3,
-  teaSpawnMax: 6.1,
-  teaTimeRewind: 1.55,
-  teaSlowdownFactor: 0.9,
-  teaSlowdownDuration: 3.0,
+  workdayDuration: 60.0,
+  teaSpawnMin: 3.6,
+  teaSpawnMax: 5.1,
+  teaTimeRewind: 2.3,
+  teaSlowdownAmount: 34,
+  teaMinSpeedFactor: 0.84,
+  teaSlowdownDuration: 2.8,
   photo: {
     path: "assets/player-photo.jpg",
     focusX: 0.15,
@@ -612,13 +613,13 @@ class Player {
     this.drawLegLimb(ctx, legs[0], true);
 
     ctx.save();
-    ctx.rotate(degToRad(8));
+    ctx.rotate(degToRad(11));
     this.drawTorso(ctx, torsoTop, torsoHeight);
     ctx.restore();
 
     this.drawLegLimb(ctx, legs[1], false);
     this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 5, -56 + pelvisBob * 0.2, 24);
+    this.drawHead(ctx, 8, -52 + pelvisBob * 0.2, 23);
   }
 
   drawSlideFigure(ctx) {
@@ -626,39 +627,40 @@ class Player {
     const floorY = h / 2 - 2;
 
     ctx.save();
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#7baed7";
     ctx.beginPath();
-    ctx.ellipse(-14, floorY + 2, 46, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-10, floorY + 2, 48, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // Низкая цельная поза скольжения: тело не рассыпается на отдельные куски.
     ctx.save();
-    ctx.translate(5, -2);
-    ctx.rotate(degToRad(-16));
+    ctx.translate(2, -4);
+    ctx.rotate(degToRad(14));
 
-    // задняя рука вдоль корпуса
-    ctx.strokeStyle = "#254f78";
-    ctx.lineWidth = 6;
+    // задняя рука — уходит назад, но остается цельной с силуэтом
+    ctx.strokeStyle = "#25547e";
+    ctx.lineWidth = 5;
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(-20, 0);
-    ctx.lineTo(-42, 9);
+    ctx.moveTo(-18, -3);
+    ctx.lineTo(-30, 2);
+    ctx.lineTo(-42, 8);
     ctx.stroke();
 
-    // задняя нога под корпусом
-    ctx.strokeStyle = "#1c4368";
+    // задняя нога — согнута под корпусом
+    ctx.strokeStyle = "#22486e";
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(-20, 16);
-    ctx.lineTo(-42, 24);
-    ctx.lineTo(-22, 28);
+    ctx.moveTo(-12, 14);
+    ctx.lineTo(-24, 24);
+    ctx.lineTo(-10, 30);
     ctx.stroke();
 
     // корпус как единая капсула
-    roundedRectPath(ctx, -32, -15, 64, 30, 15);
-    const shirt = ctx.createLinearGradient(-32, -15, 32, 15);
+    roundedRectPath(ctx, -30, -15, 64, 29, 14);
+    const shirt = ctx.createLinearGradient(-30, -15, 34, 14);
     shirt.addColorStop(0, "#102b44");
     shirt.addColorStop(1, "#17466c");
     ctx.fillStyle = shirt;
@@ -669,42 +671,42 @@ class Player {
     ctx.globalAlpha = 0.16;
     ctx.strokeStyle = "#7cb0df";
     ctx.lineWidth = 1;
-    for (let x = -28; x <= 30; x += 7) {
+    for (let x = -27; x <= 30; x += 7) {
       ctx.beginPath();
-      ctx.moveTo(x, -17);
-      ctx.lineTo(x, 17);
+      ctx.moveTo(x, -18);
+      ctx.lineTo(x, 16);
       ctx.stroke();
     }
-    for (let y = -12; y <= 14; y += 6) {
+    for (let y = -12; y <= 13; y += 6) {
       ctx.beginPath();
-      ctx.moveTo(-34, y);
-      ctx.lineTo(34, y);
+      ctx.moveTo(-32, y);
+      ctx.lineTo(36, y);
       ctx.stroke();
     }
     ctx.restore();
 
-    // передняя рука рядом с корпусом
+    // передняя рука — низко и вперед, как в скольжении Vector
     ctx.strokeStyle = "#1d5684";
     ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.moveTo(8, -5);
-    ctx.lineTo(28, 2);
-    ctx.lineTo(42, 8);
+    ctx.moveTo(6, -4);
+    ctx.lineTo(22, 0);
+    ctx.lineTo(36, 5);
     ctx.stroke();
 
-    // передняя нога вытянута низко по направлению движения
+    // передняя нога — вытянута вперед почти вдоль земли
     ctx.strokeStyle = "#173f63";
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(2, 16);
-    ctx.lineTo(24, 24);
-    ctx.lineTo(52, 22);
+    ctx.moveTo(4, 14);
+    ctx.lineTo(24, 21);
+    ctx.lineTo(44, 20);
     ctx.stroke();
 
     ctx.restore();
 
-    // Голова отдельно спереди и выше корпуса, без белой обводки и без обрезания.
-    this.drawHead(ctx, 43, -31, 24);
+    // Голова ближе к корпусу и чуть выше, чтобы не казалась оторванной.
+    this.drawHead(ctx, 30, -35, 22);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
@@ -835,6 +837,13 @@ class Obstacle {
     this.height = type.height;
     this.y = game.groundY - type.height + (type.offsetY || 0);
     this.phase = Math.random() * Math.PI * 2;
+    this.paperLabels = [];
+
+    if (type.kind === "paperPile") {
+      this.paperLabels = Array.from({ length: 4 }, () => 1 + Math.floor(Math.random() * 50));
+    } else if (type.kind === "paperHigh") {
+      this.paperLabels = Array.from({ length: 2 }, () => 1 + Math.floor(Math.random() * 50));
+    }
   }
 
   update(dt) {
@@ -865,6 +874,15 @@ class Obstacle {
     ctx.restore();
   }
 
+  drawPaperRevision(ctx, x, y, number, scale = 1) {
+    ctx.save();
+    ctx.fillStyle = "#7c8ea7";
+    ctx.font = `${Math.round(6.5 * scale)}px Arial`;
+    ctx.textBaseline = "top";
+    ctx.fillText(`Изм ${number}`, x, y);
+    ctx.restore();
+  }
+
   drawPaperPile(ctx) {
     for (let i = 0; i < 4; i++) {
       ctx.save();
@@ -880,6 +898,7 @@ class Obstacle {
       for (let y = 16; y < this.height - 8; y += 7) {
         ctx.fillRect(6, y, this.width - 22, 1.2);
       }
+      this.drawPaperRevision(ctx, 7, 12, this.paperLabels[i] || 1, 1);
       ctx.restore();
     }
   }
@@ -899,9 +918,10 @@ class Obstacle {
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = "rgba(139, 167, 199, 0.65)";
-      for (let y = 6; y < 20; y += 5) {
+      for (let y = 10; y < 20; y += 5) {
         ctx.fillRect(5, y, 20, 1.2);
       }
+      this.drawPaperRevision(ctx, 5, 4, this.paperLabels[i] || 1, 0.9);
       ctx.beginPath();
       ctx.moveTo(25, 0);
       ctx.lineTo(34, 9);
@@ -1046,10 +1066,10 @@ class ObstacleManager {
 class TeaPickup {
   constructor(game, x) {
     this.game = game;
-    this.width = 34;
-    this.height = 34;
+    this.width = 42;
+    this.height = 42;
     this.x = x;
-    this.y = game.groundY - 116 - Math.random() * 22;
+    this.y = game.groundY - 122 - Math.random() * 20;
     this.phase = Math.random() * Math.PI * 2;
   }
 
@@ -1060,9 +1080,9 @@ class TeaPickup {
   getBounds() {
     return {
       x: this.x + 4,
-      y: this.y + 4,
+      y: this.y + 5,
       width: this.width - 8,
-      height: this.height - 8,
+      height: this.height - 10,
     };
   }
 
@@ -1071,35 +1091,50 @@ class TeaPickup {
     ctx.save();
     ctx.translate(this.x, this.y + bob);
 
-    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.fillStyle = "rgba(255,255,255,0.24)";
     ctx.beginPath();
-    ctx.arc(this.width / 2, this.height / 2, 18, 0, Math.PI * 2);
+    ctx.arc(this.width / 2, this.height / 2, 21, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#ffffff";
-    roundedRectPath(ctx, 8, 11, 16, 12, 4);
+    // saucer
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.beginPath();
+    ctx.ellipse(21, 29, 14, 4.4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#cad8e8";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // cup body
+    ctx.fillStyle = "#ffffff";
+    roundedRectPath(ctx, 9, 12, 19, 14, 5);
+    ctx.fill();
+    ctx.strokeStyle = "#c6d8ea";
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(25, 17, 5, -Math.PI / 2, Math.PI / 2);
-    ctx.stroke();
-
-    ctx.fillStyle = "#c88e4d";
-    roundedRectPath(ctx, 9.5, 13, 13, 8, 3);
+    // tea inside
+    ctx.fillStyle = "#be7f33";
+    roundedRectPath(ctx, 11, 14, 15, 8, 3);
     ctx.fill();
 
-    ctx.strokeStyle = "rgba(255,255,255,0.75)";
-    ctx.lineWidth = 1.6;
+    // handle
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 3.2;
     ctx.beginPath();
-    ctx.moveTo(13, 8);
-    ctx.quadraticCurveTo(10, 4, 14, 1);
-    ctx.moveTo(18, 8);
-    ctx.quadraticCurveTo(15, 4, 19, 1);
+    ctx.arc(30, 19, 5.2, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+
+    // steam
+    ctx.strokeStyle = "rgba(255,255,255,0.82)";
+    ctx.lineWidth = 1.7;
+    ctx.beginPath();
+    ctx.moveTo(14, 10);
+    ctx.bezierCurveTo(11, 6, 12, 3, 15, 1);
+    ctx.moveTo(20, 10);
+    ctx.bezierCurveTo(17, 6, 18, 3, 21, 1);
+    ctx.moveTo(26, 10);
+    ctx.bezierCurveTo(23, 6, 24, 3, 27, 1);
     ctx.stroke();
 
     ctx.restore();
@@ -1370,14 +1405,14 @@ class Game {
     try {
       const raw = localStorage.getItem(LEADERBOARD_KEY);
       const data = raw ? JSON.parse(raw) : [];
-      return Array.isArray(data) ? data : [];
+      return mergeLeaderboardRows(Array.isArray(data) ? data : []).slice(0, 10);
     } catch {
       return [];
     }
   }
 
   saveLocalLeaderboard(rows) {
-    localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(rows.slice(0, 10)));
+    localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(mergeLeaderboardRows(rows).slice(0, 10)));
   }
 
   setLeaderboardStatus(text) {
@@ -1415,8 +1450,7 @@ class Game {
                 date: row.date || "",
               });
             });
-            rows.sort((a, b) => b.score - a.score);
-            this.leaderboardRows = rows.slice(0, 10);
+            this.leaderboardRows = mergeLeaderboardRows(rows).slice(0, 10);
             this.saveLocalLeaderboard(this.leaderboardRows);
             this.updateLeaderboardUI();
             this.setLeaderboardStatus("Общая онлайн-таблица лидеров");
@@ -1436,7 +1470,7 @@ class Game {
 
   updateLeaderboardUI() {
     if (!this.leaderboardList) return;
-    const rows = (this.leaderboardRows || []).sort((a, b) => b.score - a.score).slice(0, 10);
+    const rows = mergeLeaderboardRows(this.leaderboardRows || []).slice(0, 10);
     if (!rows.length) {
       this.leaderboardList.innerHTML = '<li class="leaderboard-empty">Пока нет результатов</li>';
       return;
@@ -1468,13 +1502,18 @@ class Game {
       date: new Date().toISOString(),
     };
 
-    const localRows = this.loadLocalLeaderboard();
-    localRows.push(result);
-    localRows.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+    const localRows = mergeLeaderboardRows([...this.loadLocalLeaderboard(), result]);
     this.saveLocalLeaderboard(localRows);
 
     if (this.firebaseReady && this.leaderboardRef) {
-      this.leaderboardRef.push(result).catch(() => {
+      const entryKey = leaderboardNameKey(this.playerName);
+      this.leaderboardRef.child(entryKey).transaction((current) => {
+        const currentScore = Number(current && current.score || 0);
+        if (!current || result.score > currentScore) {
+          return result;
+        }
+        return current;
+      }).catch(() => {
         this.setLeaderboardStatus("Результат сохранён локально, но не отправился онлайн");
         this.leaderboardRows = localRows.slice(0, 10);
         this.updateLeaderboardUI();
@@ -1489,7 +1528,8 @@ class Game {
     this.teaManager.items.splice(index, 1);
     this.teaCount += 1;
     this.workProgress = Math.max(0, this.workProgress - CONFIG.teaTimeRewind);
-    this.speed = Math.max(CONFIG.baseSpeed * 0.92, this.speed * CONFIG.teaSlowdownFactor);
+    const minTeaSpeed = CONFIG.baseSpeed * CONFIG.teaMinSpeedFactor;
+    this.speed = Math.max(minTeaSpeed, this.speed - CONFIG.teaSlowdownAmount);
     this.slowTimer = Math.max(this.slowTimer, CONFIG.teaSlowdownDuration);
     this.audio.tea();
   }
