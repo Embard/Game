@@ -57,7 +57,7 @@ const CHARACTERS = [
   {
     id: "alexey",
     name: "Alexey",
-    description: "Новый персонаж",
+    description: "Инженер в пиджаке",
     path: "assets/characters/alexey",
     preview: "assets/characters/alexey/preview.png",
   },
