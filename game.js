@@ -1,13 +1,13 @@
 "use strict";
 
 const CONFIG = {
-  gravity: 2180,
-  jumpForce: 800,
+  gravity: 2260,
+  jumpForce: 930,
   baseSpeed: 315,
   speedGrowth: 6.2,
   obstacleFrequency: 1.0,
   maxDt: 0.033,
-  groundHeight: 82,
+  groundHeight: 104,
   workdayDuration: 60.0,
   teaSpawnMin: 3.6,
   teaSpawnMax: 5.1,
@@ -405,7 +405,7 @@ class Player {
     this.portraitTexture = portraitTexture;
     this.usePhoto = !!(portraitTexture && portraitTexture.ready);
 
-    this.x = 160;
+    this.x = 185;
     this.width = 86;
     this.standHeight = 126;
     this.slideHeight = 62;
@@ -1299,7 +1299,7 @@ Player.prototype.getSpriteFrameName = function () {
   if (this.ducking && this.grounded) return "slide";
   if (!this.grounded) return this.vy < 120 ? "jump" : "land";
   const frames = ["run1", "run2", "run3", "run4"];
-  const phase = wrap01(this.runTime * 0.95);
+  const phase = wrap01(this.runTime * 2.65);
   const index = Math.floor(phase * frames.length) % frames.length;
   return frames[index];
 };
@@ -1319,41 +1319,56 @@ Player.prototype.draw = function (ctx) {
   }
 
   const groundY = this.game.groundY;
+  const bodyBaseY = this.y + this.height;
   const centerX = this.x + this.width * 0.5;
   const airborne = !this.grounded;
   const descending = airborne && this.vy >= 120;
   const sliding = this.ducking && this.grounded;
-  const runBob = this.grounded && !sliding ? Math.sin(this.runTime * 10) * 2.5 : 0;
+  const runBob = this.grounded && !sliding ? Math.sin(this.runTime * 18) * 1.6 : 0;
+  const airGap = Math.max(0, groundY - bodyBaseY);
 
-  let drawH = 132;
+  let drawH = 122;
   let xOffset = 0;
   let yOffset = 0;
 
   if (sliding) {
-    drawH = 72;
-    xOffset = -12;
+    drawH = 68;
+    xOffset = -10;
     yOffset = 2;
   } else if (airborne && !descending) {
-    drawH = 128;
-    yOffset = -16;
+    drawH = 118;
+    yOffset = -5;
   } else if (descending) {
-    drawH = 102;
+    drawH = 98;
     xOffset = 2;
-    yOffset = -2;
+    yOffset = 0;
   }
 
   const aspect = sprite.naturalWidth / Math.max(1, sprite.naturalHeight);
   const drawW = drawH * aspect;
   const drawX = centerX - drawW * 0.5 + xOffset;
-  const drawY = groundY - drawH + yOffset + runBob;
+  const drawY = bodyBaseY - drawH + yOffset + runBob;
 
   ctx.save();
 
-  const shadowAlpha = this.grounded ? 0.16 : clamp(0.12 - Math.abs(this.vy) / 9000, 0.05, 0.12);
+  const shadowAlpha = this.grounded ? 0.18 : clamp(0.18 - airGap / 320, 0.045, 0.16);
+  const shadowScale = this.grounded ? 1 : clamp(1 - airGap / 260, 0.45, 0.95);
   ctx.fillStyle = `rgba(35, 64, 92, ${shadowAlpha})`;
   ctx.beginPath();
-  ctx.ellipse(centerX + (sliding ? 6 : 0), groundY - 4, sliding ? 42 : 30, sliding ? 7 : 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(centerX + (sliding ? 6 : 0), groundY - 4, (sliding ? 42 : 30) * shadowScale, (sliding ? 7 : 6) * shadowScale, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  if (airborne && airGap > 12) {
+    ctx.save();
+    ctx.setLineDash([5, 6]);
+    ctx.strokeStyle = "rgba(35, 64, 92, 0.16)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(centerX - 24, bodyBaseY + 2);
+    ctx.lineTo(centerX - 24, groundY - 8);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if (this.landingDust > 0) {
     ctx.globalAlpha = this.landingDust * 0.30;
@@ -1610,7 +1625,7 @@ class Game {
 
   onResize() {
     const ratio = this.worldWidth / this.worldHeight;
-    const maxW = Math.min(window.innerWidth - 40, 1000);
+    const maxW = Math.min(window.innerWidth - 40, 1180);
     const w = Math.max(320, maxW);
     const h = w / ratio;
     this.canvas.style.width = `${w}px`;
