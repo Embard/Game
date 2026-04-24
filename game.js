@@ -1,29 +1,34 @@
 "use strict";
 
 const CONFIG = {
-  gravity: 2260,
-  jumpForce: 930,
-  baseSpeed: 315,
-  speedGrowth: 6.2,
-  obstacleFrequency: 1.0,
+  gravity: 2160,
+  jumpForce: 790,
+  baseSpeed: 300,
+  speedGrowth: 4.4,
+  obstacleFrequency: 0.96,
   maxDt: 0.033,
-  groundHeight: 104,
-  workdayDuration: 60.0,
-  teaSpawnMin: 3.6,
-  teaSpawnMax: 5.1,
-  teaTimeRewind: 2.3,
-  teaSlowdownAmount: 34,
-  teaMinSpeedFactor: 0.84,
-  teaSlowdownDuration: 2.8,
-  photo: {
-    path: "assets/player-photo.jpg",
-    focusX: 0.15,
-    focusY: 0.26,
-    zoom: 1.0,
-    saturation: 1.08,
-    contrast: 1.07,
-    brightness: 1.02,
+  groundHeight: 96,
+  maxHealthUnits: 6,
+  damageUnits: 2,
+  invulnerabilityDuration: 1.05,
+  beverageSpawnMin: 3.6,
+  beverageSpawnMax: 5.8,
+  cartSpawnMin: 13.5,
+  cartSpawnMax: 19.5,
+  cup: {
+    healUnits: 1,
+    slowdownAmount: 10,
+    minSpeedFactor: 0.92,
+    slowDuration: 1.4,
   },
+  teapot: {
+    healUnits: 2,
+    slowdownAmount: 28,
+    minSpeedFactor: 0.84,
+    slowDuration: 2.6,
+  },
+  cartRideDuration: 4.0,
+  cartRideOffsetY: 28,
 };
 
 const STORAGE_KEY = "gip-runner-best";
@@ -37,7 +42,7 @@ const FIREBASE_CONFIG = {
   projectId: "runner-bb9a8",
   storageBucket: "runner-bb9a8.firebasestorage.app",
   messagingSenderId: "36209569924",
-  appId: "1:36209569924:web:f44e0b9bf1c3c818b492d1"
+  appId: "1:36209569924:web:f44e0b9bf1c3c818b492d1",
 };
 const LEADERBOARD_PATH = "leaderboard";
 
@@ -55,31 +60,6 @@ function getCharacterById(id) {
   return CHARACTERS.find((character) => character.id === id) || CHARACTERS[0];
 }
 
-
-const RUN_LEG_CYCLE = [
-  { t: 0.0, x: 22, y: 0, foot: -4 },
-  { t: 0.125, x: 14, y: 0, foot: -1 },
-  { t: 0.25, x: 4, y: -1, foot: 4 },
-  { t: 0.375, x: -8, y: -2, foot: 14 },
-  { t: 0.5, x: -20, y: -6, foot: 26 },
-  { t: 0.625, x: -12, y: -22, foot: 18 },
-  { t: 0.75, x: 4, y: -30, foot: 6 },
-  { t: 0.875, x: 18, y: -16, foot: -3 },
-  { t: 1.0, x: 22, y: 0, foot: -4 },
-];
-
-const RUN_ARM_CYCLE = [
-  { t: 0.0, upper: 28, fore: 56 },
-  { t: 0.125, upper: 16, fore: 40 },
-  { t: 0.25, upper: 4, fore: 24 },
-  { t: 0.375, upper: -10, fore: 6 },
-  { t: 0.5, upper: -26, fore: -8 },
-  { t: 0.625, upper: -14, fore: 10 },
-  { t: 0.75, upper: 0, fore: 24 },
-  { t: 0.875, upper: 18, fore: 46 },
-  { t: 1.0, upper: 28, fore: 56 },
-];
-
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -92,37 +72,6 @@ function wrap01(value) {
   let v = value % 1;
   if (v < 0) v += 1;
   return v;
-}
-
-function sampleFrame(frames, phase) {
-  const p = wrap01(phase);
-  for (let i = 0; i < frames.length - 1; i++) {
-    const a = frames[i];
-    const b = frames[i + 1];
-    if (p >= a.t && p <= b.t) {
-      const rawT = (p - a.t) / Math.max(0.0001, b.t - a.t);
-      const localT = rawT * rawT * (3 - 2 * rawT);
-      const result = {};
-      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-      for (const key of keys) {
-        if (key === "t") continue;
-        const av = typeof a[key] === "number" ? a[key] : 0;
-        const bv = typeof b[key] === "number" ? b[key] : av;
-        result[key] = lerp(av, bv, localT);
-      }
-      return result;
-    }
-  }
-
-  const fallback = {};
-  for (const key of Object.keys(frames[0])) {
-    if (key !== "t") fallback[key] = frames[0][key];
-  }
-  return fallback;
-}
-
-function degToRad(deg) {
-  return (deg * Math.PI) / 180;
 }
 
 function roundedRectPath(ctx, x, y, width, height, radius) {
@@ -161,10 +110,12 @@ function escapeHtml(value) {
 }
 
 function normalizePlayerName(value) {
-  return String(value || "Игрок")
-    .trim()
-    .replace(/[\n\r\t<>]/g, "")
-    .slice(0, 18) || "Игрок";
+  return (
+    String(value || "Игрок")
+      .trim()
+      .replace(/[\n\r\t<>]/g, "")
+      .slice(0, 18) || "Игрок"
+  );
 }
 
 function isTypingTarget(target) {
@@ -196,7 +147,12 @@ function mergeLeaderboardRows(rows) {
     };
     const key = normalized.toLowerCase();
     const current = bestByName.get(key);
-    if (!current || candidate.score > current.score || (candidate.score === current.score && candidate.tea > current.tea) || (candidate.score === current.score && candidate.tea === current.tea && candidate.date > current.date)) {
+    if (
+      !current ||
+      candidate.score > current.score ||
+      (candidate.score === current.score && candidate.tea > current.tea) ||
+      (candidate.score === current.score && candidate.tea === current.tea && candidate.date > current.date)
+    ) {
       bestByName.set(key, candidate);
     }
   }
@@ -206,7 +162,6 @@ function mergeLeaderboardRows(rows) {
     return String(b.date || "").localeCompare(String(a.date || ""));
   });
 }
-
 
 class AudioEngine {
   constructor() {
@@ -242,7 +197,7 @@ class AudioEngine {
   }
 
   jump() {
-    this.ping("triangle", 580, 0.08, 0.07);
+    this.ping("triangle", 600, 0.09, 0.07);
   }
 
   score() {
@@ -250,12 +205,17 @@ class AudioEngine {
   }
 
   hit() {
-    this.ping("sawtooth", 150, 0.17, 0.08);
+    this.ping("sawtooth", 140, 0.18, 0.08);
   }
 
   tea() {
     this.ping("sine", 950, 0.08, 0.05);
     window.setTimeout(() => this.ping("triangle", 700, 0.06, 0.04), 55);
+  }
+
+  powerup() {
+    this.ping("triangle", 520, 0.09, 0.06);
+    window.setTimeout(() => this.ping("triangle", 760, 0.11, 0.05), 90);
   }
 
   win() {
@@ -264,71 +224,22 @@ class AudioEngine {
   }
 }
 
-class PortraitTexture {
-  constructor(image) {
-    this.ready = false;
-    this.image = image;
-    this.canvas = null;
-    this.build();
-  }
-
-  build() {
-    if (!this.image) return;
-
-    const size = 256;
-    const buffer = document.createElement("canvas");
-    buffer.width = size;
-    buffer.height = size;
-
-    const ctx = buffer.getContext("2d");
-    const iw = this.image.naturalWidth || this.image.width;
-    const ih = this.image.naturalHeight || this.image.height;
-    if (!iw || !ih) return;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
-    ctx.clip();
-
-    ctx.filter = `saturate(${CONFIG.photo.saturation}) contrast(${CONFIG.photo.contrast}) brightness(${CONFIG.photo.brightness})`;
-
-    // Важно: больше не вырезаем лицо агрессивным кропом.
-    // Масштабируем всю картинку внутрь круга, чтобы голова не обрезалась.
-    const padding = 4;
-    const scale = Math.min((size - padding * 2) / iw, (size - padding * 2) / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
-    const dx = (size - dw) / 2;
-    const dy = (size - dh) / 2;
-    ctx.drawImage(this.image, dx, dy, dw, dh);
-    ctx.restore();
-
-    this.canvas = buffer;
-    this.ready = true;
-  }
-
-  draw(ctx, x, y, w, h) {
-    if (!this.ready || !this.canvas) return false;
-    ctx.drawImage(this.canvas, x, y, w, h);
-    return true;
-  }
-}
-
 class Background {
   constructor(game) {
     this.game = game;
     this.clouds = [];
-    this.spawnCloud(10);
+    this.spawnCloud(0);
+    while (this.clouds.length < 8) this.spawnCloud(this.game.worldWidth * Math.random());
   }
 
-  spawnCloud(minX = this.game.worldWidth + 40) {
-    const y = 30 + Math.random() * 120;
-    const scale = 0.6 + Math.random() * 0.9;
+  spawnCloud(minX = this.game.worldWidth + 80) {
+    const y = 26 + Math.random() * 90;
+    const scale = 0.65 + Math.random() * 0.9;
     this.clouds.push({
-      x: minX + Math.random() * 220,
+      x: minX + Math.random() * 180,
       y,
       scale,
-      speedMul: 0.18 + Math.random() * 0.18,
+      speedMul: 0.12 + Math.random() * 0.12,
     });
   }
 
@@ -336,53 +247,58 @@ class Background {
     for (const cloud of this.clouds) {
       cloud.x -= this.game.speed * cloud.speedMul * dt;
     }
-    this.clouds = this.clouds.filter((c) => c.x > -160);
-    while (this.clouds.length < 9) this.spawnCloud();
+    this.clouds = this.clouds.filter((c) => c.x > -220);
+    while (this.clouds.length < 8) this.spawnCloud();
   }
 
   draw(ctx) {
     const { worldWidth: w, worldHeight: h, groundY } = this.game;
+    const t = this.game.distance;
 
     const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, "#f7fbff");
-    sky.addColorStop(1, "#dceeff");
+    sky.addColorStop(0, "#edf7ff");
+    sky.addColorStop(0.62, "#d9ecff");
+    sky.addColorStop(1, "#c6e0fa");
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+    const glow = ctx.createRadialGradient(w * 0.78, 68, 10, w * 0.78, 68, 220);
+    glow.addColorStop(0, "rgba(255,255,255,0.55)");
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
 
     for (const cloud of this.clouds) {
       this.drawCloud(ctx, cloud.x, cloud.y, cloud.scale);
     }
 
-    ctx.save();
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = "#8eb7de";
-    const t = this.game.time * 0.12;
-    for (let i = 0; i < 5; i++) {
-      const x = ((i * 260 - t * 100) % (w + 380)) - 120;
-      ctx.beginPath();
-      ctx.moveTo(x, groundY);
-      ctx.quadraticCurveTo(x + 70, groundY - 44, x + 140, groundY);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
+    this.drawSkyline(ctx, 0.12, groundY - 140, 90, 180, ["#c4d6ea", "#afc7e0"]);
+    this.drawSkyline(ctx, 0.24, groundY - 106, 120, 120, ["#a5bcd8", "#8fb0d2"]);
+    this.drawTrees(ctx, 0.38, groundY - 24);
 
-    ctx.fillStyle = "#9ec3e8";
+    ctx.fillStyle = "#98bddf";
     ctx.fillRect(0, groundY, w, h - groundY);
 
-    const stride = 36;
+    ctx.fillStyle = "#84afd8";
+    ctx.fillRect(0, groundY - 5, w, 5);
+
+    ctx.fillStyle = "#6e8ea9";
+    ctx.fillRect(0, groundY + 12, w, 8);
+    ctx.fillStyle = "#7a9ec1";
+    ctx.fillRect(0, groundY + 20, w, h - groundY - 20);
+
+    const stride = 42;
     ctx.strokeStyle = "rgba(255,255,255,0.45)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     for (let x = -stride; x < w + stride; x += stride) {
-      const sx = x - (this.game.distance * 0.8) % stride;
-      ctx.moveTo(sx, groundY + 12);
-      ctx.lineTo(sx + 12, groundY + 18);
+      const sx = x - (t * 0.85) % stride;
+      ctx.moveTo(sx, groundY + 29);
+      ctx.lineTo(sx + 14, groundY + 36);
     }
     ctx.stroke();
-
-    ctx.fillStyle = "#84afd8";
-    ctx.fillRect(0, groundY - 4, w, 4);
   }
 
   drawCloud(ctx, x, y, scale) {
@@ -391,36 +307,64 @@ class Background {
     ctx.scale(scale, scale);
     ctx.fillStyle = "rgba(255,255,255,0.92)";
     ctx.beginPath();
-    ctx.arc(0, 18, 22, 0, Math.PI * 2);
-    ctx.arc(22, 10, 28, 0, Math.PI * 2);
-    ctx.arc(52, 18, 20, 0, Math.PI * 2);
+    ctx.arc(0, 16, 20, 0, Math.PI * 2);
+    ctx.arc(20, 9, 26, 0, Math.PI * 2);
+    ctx.arc(49, 16, 18, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+
+  drawSkyline(ctx, parallax, baseY, spacing, maxWidth, palette) {
+    const w = this.game.worldWidth;
+    const drift = (this.game.distance * parallax) % spacing;
+    for (let x = -spacing; x < w + spacing; x += spacing) {
+      const bx = x - drift;
+      const width = maxWidth * (0.48 + ((x / spacing + 5) % 5) * 0.1);
+      const height = 48 + (((x / spacing + 3) % 4) + 1) * 26;
+      const color = palette[Math.abs(Math.floor(x / spacing)) % palette.length];
+      ctx.fillStyle = color;
+      roundedRectPath(ctx, bx, baseY - height, width, height, 6);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255,255,255,0.48)";
+      const winW = 9;
+      const winH = 12;
+      for (let iy = 12; iy < height - 10; iy += 18) {
+        for (let ix = 10; ix < width - 10; ix += 17) {
+          roundedRectPath(ctx, bx + ix, baseY - height + iy, winW, winH, 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+
+  drawTrees(ctx, parallax, baseY) {
+    const w = this.game.worldWidth;
+    const stride = 96;
+    const drift = (this.game.distance * parallax) % stride;
+    for (let x = -stride; x < w + stride; x += stride) {
+      const bx = x - drift;
+      ctx.fillStyle = "#7f9a6b";
+      ctx.beginPath();
+      ctx.arc(bx + 36, baseY - 12, 18, 0, Math.PI * 2);
+      ctx.arc(bx + 50, baseY - 18, 14, 0, Math.PI * 2);
+      ctx.arc(bx + 60, baseY - 10, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#765d47";
+      ctx.fillRect(bx + 46, baseY - 4, 6, 22);
+    }
   }
 }
 
 class Player {
-  constructor(game, portraitTexture) {
+  constructor(game) {
     this.game = game;
-    this.portraitTexture = portraitTexture;
-    this.usePhoto = !!(portraitTexture && portraitTexture.ready);
-
-    this.x = 185;
-    this.width = 86;
-    this.standHeight = 126;
-    this.slideHeight = 62;
-
-    this.height = this.standHeight;
-    this.y = this.game.groundY - this.height;
-    this.vy = 0;
-    this.grounded = true;
-    this.ducking = false;
-    this.slideTimer = 0;
-    this.slideCooldown = 0;
-    this.runTime = 0;
-    this.squash = 0;
-    this.lastGrounded = true;
-    this.landingDust = 0;
+    this.x = 186;
+    this.width = 96;
+    this.standHeight = 134;
+    this.slideHeight = 76;
+    this.spriteSet = null;
+    this.reset();
   }
 
   reset() {
@@ -432,12 +376,12 @@ class Player {
     this.slideTimer = 0;
     this.slideCooldown = 0;
     this.runTime = 0;
-    this.squash = 0;
-    this.lastGrounded = true;
     this.landingDust = 0;
+    this.lastGrounded = true;
   }
 
   jump() {
+    if (this.game.isRidingCart()) return;
     if (!this.grounded) return;
     this.vy = -CONFIG.jumpForce;
     this.grounded = false;
@@ -449,20 +393,31 @@ class Player {
   }
 
   startSlide() {
+    if (this.game.isRidingCart()) return;
     if (!this.grounded) return;
     if (this.ducking || this.slideCooldown > 0) return;
     this.ducking = true;
-    this.slideTimer = 0.62;
+    this.slideTimer = 0.64;
     this.height = this.slideHeight;
     this.y = this.game.groundY - this.height;
   }
 
-  setDuck(isDown) {
-    if (isDown) this.startSlide();
-  }
-
   update(dt) {
-    this.runTime += dt * (this.game.speed / CONFIG.baseSpeed);
+    this.runTime += dt * (this.game.speed / CONFIG.baseSpeed) * 1.5;
+
+    if (this.game.isRidingCart()) {
+      this.ducking = false;
+      this.grounded = true;
+      this.slideTimer = 0;
+      this.slideCooldown = 0;
+      this.height = this.standHeight;
+      this.vy = 0;
+      this.y = this.game.groundY - this.height - CONFIG.cartRideOffsetY;
+      this.landingDust = 0;
+      this.lastGrounded = true;
+      return;
+    }
+
     this.slideCooldown = Math.max(0, this.slideCooldown - dt);
 
     if (this.ducking) {
@@ -470,7 +425,7 @@ class Player {
       if (this.slideTimer <= 0) {
         this.ducking = false;
         this.slideTimer = 0;
-        this.slideCooldown = 0.16;
+        this.slideCooldown = 0.18;
       }
     }
 
@@ -491,7 +446,6 @@ class Player {
     const floor = this.game.groundY - this.height;
     if (this.y >= floor) {
       if (!this.lastGrounded) {
-        this.squash = 1;
         this.landingDust = 1;
       }
       this.y = floor;
@@ -499,748 +453,122 @@ class Player {
       this.grounded = true;
     } else {
       this.grounded = false;
-      this.ducking = false;
       this.height = this.standHeight;
     }
 
     this.lastGrounded = this.grounded;
-    this.squash = Math.max(0, this.squash - dt * 7);
     this.landingDust = Math.max(0, this.landingDust - dt * 4);
   }
 
   getBounds() {
     if (this.ducking && this.grounded) {
       return {
-        x: this.x + 6,
-        y: this.y + 16,
-        width: this.width - 8,
-        height: this.height - 16,
+        x: this.x + 14,
+        y: this.y + 20,
+        width: this.width - 28,
+        height: this.height - 24,
       };
     }
-
     return {
-      x: this.x + 14,
-      y: this.y + 8,
-      width: this.width - 28,
-      height: this.height - 10,
+      x: this.x + 18,
+      y: this.y + 12,
+      width: this.width - 34,
+      height: this.height - 16,
     };
+  }
+
+  getSpriteFrameName() {
+    if (this.ducking && this.grounded) return "slide";
+    if (!this.grounded) return this.vy < 150 ? "jump" : "land";
+    const frames = ["run1", "run2", "run3", "run4"];
+    const phase = wrap01(this.runTime * 1.3);
+    const index = Math.floor(phase * frames.length) % frames.length;
+    return frames[index];
   }
 
   draw(ctx) {
-    ctx.save();
-
-    const phase = wrap01(this.runTime * 1.6);
-    const bodyBob = this.grounded && !this.ducking ? Math.sin(phase * Math.PI * 2) * 1.1 : 0;
-    const squashY = this.grounded ? 1 - this.squash * 0.07 : 1 + Math.min(0.045, Math.abs(this.vy) / 3000);
-    const squashX = this.grounded ? 1 + this.squash * 0.07 : 1 - Math.min(0.025, Math.abs(this.vy) / 3000);
-
-    ctx.translate(this.x + this.width / 2, this.y + this.height / 2 + bodyBob);
-    ctx.scale(squashX, squashY);
-
-    this.drawGroundShadow(ctx);
-    if (this.ducking && this.grounded) {
-      this.drawSlideFigure(ctx);
-    } else {
-      this.drawRunFigure(ctx, phase);
-    }
-    this.drawLandingDust(ctx);
-
-    ctx.restore();
-  }
-
-  drawGroundShadow(ctx) {
-    const alpha = this.grounded ? 0.16 : clamp(0.13 - Math.abs(this.vy) / 9000, 0.05, 0.13);
-    ctx.save();
-    ctx.fillStyle = `rgba(35, 64, 92, ${alpha})`;
-    ctx.beginPath();
-    ctx.ellipse(4, this.height / 2 - 2, this.ducking ? 44 : 31, this.ducking ? 7 : 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  drawLandingDust(ctx) {
-    if (this.landingDust <= 0) return;
-    ctx.save();
-    ctx.globalAlpha = this.landingDust * 0.28;
-    ctx.fillStyle = "#ffffff";
-    const y = this.height / 2 - 8;
-    ctx.beginPath();
-    ctx.ellipse(-16 - (1 - this.landingDust) * 12, y, 9, 3, 0, 0, Math.PI * 2);
-    ctx.ellipse(16 + (1 - this.landingDust) * 12, y + 1, 8, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  sampleLegPose(phase) {
-    return sampleFrame(RUN_LEG_CYCLE, phase);
-  }
-
-  sampleArmPose(phase) {
-    return sampleFrame(RUN_ARM_CYCLE, phase);
-  }
-
-  solveLegIK(hipX, hipY, ankleX, ankleY, bendSign = -1) {
-    const thighLen = 29;
-    const shinLen = 30;
-    const dx = ankleX - hipX;
-    const dy = ankleY - hipY;
-    const distanceRaw = Math.max(0.001, Math.hypot(dx, dy));
-    const distance = Math.min(distanceRaw, thighLen + shinLen - 0.001);
-    const dirX = dx / distanceRaw;
-    const dirY = dy / distanceRaw;
-
-    const a = (thighLen * thighLen - shinLen * shinLen + distance * distance) / (2 * distance);
-    const lift = Math.sqrt(Math.max(0, thighLen * thighLen - a * a));
-
-    const baseX = hipX + dirX * a;
-    const baseY = hipY + dirY * a;
-    const perpX = -dirY;
-    const perpY = dirX;
-
-    const kneeX = baseX + perpX * lift * bendSign;
-    const kneeY = baseY + perpY * lift * bendSign;
-
-    return { hipX, hipY, kneeX, kneeY, ankleX, ankleY };
-  }
-
-  solveArm(shoulderX, shoulderY, upperDeg, foreDeg) {
-    const upperLen = 21;
-    const foreLen = 18;
-
-    const upperTheta = degToRad(90 - upperDeg);
-    const elbowX = shoulderX + Math.cos(upperTheta) * upperLen;
-    const elbowY = shoulderY + Math.sin(upperTheta) * upperLen;
-
-    const foreTheta = degToRad(90 - foreDeg);
-    const handX = elbowX + Math.cos(foreTheta) * foreLen;
-    const handY = elbowY + Math.sin(foreTheta) * foreLen;
-
-    return { shoulderX, shoulderY, elbowX, elbowY, handX, handY };
-  }
-
-  drawRunFigure(ctx, phase) {
-    const h = this.height;
-    const floorY = h / 2 - 4;
-    const pelvisBob = this.grounded ? Math.sin(phase * Math.PI * 2) * 1.8 : 0;
-
-    const torsoTop = -34 + pelvisBob * 0.15;
-    const torsoHeight = 54;
-    const torsoBottom = torsoTop + torsoHeight;
-    const shoulderY = torsoTop + 8;
-    const hipY = torsoBottom - 3;
-
-    const leftHipX = -9;
-    const rightHipX = 9;
-    const leftShoulderX = -16;
-    const rightShoulderX = 16;
-
-    let leftLeg;
-    let rightLeg;
-    let leftArm;
-    let rightArm;
-
-    if (!this.grounded) {
-      if (this.vy < 0) {
-        leftLeg = this.solveLegIK(leftHipX, hipY, 14, floorY - 26, -1);
-        rightLeg = this.solveLegIK(rightHipX, hipY, -22, floorY - 7, -1);
-        leftArm = this.solveArm(leftShoulderX, shoulderY, 24, 42);
-        rightArm = this.solveArm(rightShoulderX, shoulderY, -12, 10);
-      } else {
-        leftLeg = this.solveLegIK(leftHipX, hipY, 18, floorY - 10, -1);
-        rightLeg = this.solveLegIK(rightHipX, hipY, -10, floorY - 18, -1);
-        leftArm = this.solveArm(leftShoulderX, shoulderY, 14, 28);
-        rightArm = this.solveArm(rightShoulderX, shoulderY, -4, 10);
-      }
-    } else {
-      const leftFoot = this.sampleLegPose(phase);
-      const rightFoot = this.sampleLegPose(phase + 0.5);
-      const leftArmPose = this.sampleArmPose(phase + 0.5);
-      const rightArmPose = this.sampleArmPose(phase);
-
-      leftLeg = this.solveLegIK(leftHipX, hipY, leftFoot.x, floorY + leftFoot.y, -1);
-      rightLeg = this.solveLegIK(rightHipX, hipY, rightFoot.x, floorY + rightFoot.y, -1);
-      leftArm = this.solveArm(leftShoulderX, shoulderY, leftArmPose.upper, leftArmPose.fore);
-      rightArm = this.solveArm(rightShoulderX, shoulderY, rightArmPose.upper, rightArmPose.fore);
-    }
-
-    const legs = [leftLeg, rightLeg].sort((a, b) => a.ankleX - b.ankleX);
-    const arms = [leftArm, rightArm].sort((a, b) => a.handX - b.handX);
-
-    this.drawArmLimb(ctx, arms[0], true);
-    this.drawLegLimb(ctx, legs[0], true);
+    const centerX = this.x + this.width * 0.5;
+    const groundY = this.game.groundY - (this.game.isRidingCart() ? CONFIG.cartRideOffsetY : 0);
+    const sliding = this.ducking && this.grounded && !this.game.isRidingCart();
+    const airborne = !this.grounded && !this.game.isRidingCart();
+    const descending = airborne && this.vy >= 120;
+    const runBob = this.grounded && !sliding && !this.game.isRidingCart() ? Math.sin(this.runTime * 13) * 2.2 : 0;
 
     ctx.save();
-    ctx.rotate(degToRad(9));
-    this.drawTorso(ctx, torsoTop, torsoHeight);
-    ctx.restore();
-
-    this.drawLegLimb(ctx, legs[1], false);
-    this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 4, -56 + pelvisBob * 0.15, 23);
-  }
-
-  drawSlideFigure(ctx) {
-    const h = this.height;
-    const floorY = h / 2 - 2;
-
-    ctx.save();
-    ctx.globalAlpha = 0.2;
-    ctx.fillStyle = "#7baed7";
-    ctx.beginPath();
-    ctx.ellipse(-8, floorY + 2, 44, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // Компактная цельная поза скольжения: без визуальной каши.
-    ctx.save();
-    ctx.translate(0, 1);
-    ctx.rotate(degToRad(8));
-
-    // задняя нога компактно под телом
-    ctx.strokeStyle = "#22486e";
-    ctx.lineWidth = 8;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(-14, 13);
-    ctx.lineTo(-22, 20);
-    ctx.lineTo(-10, 25);
-    ctx.stroke();
-
-    // задняя рука близко к телу
-    ctx.strokeStyle = "#25547e";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(-16, -2);
-    ctx.lineTo(-24, 2);
-    ctx.lineTo(-33, 7);
-    ctx.stroke();
-
-    // корпус
-    roundedRectPath(ctx, -28, -14, 60, 28, 13);
-    const shirt = ctx.createLinearGradient(-28, -14, 32, 14);
-    shirt.addColorStop(0, "#102b44");
-    shirt.addColorStop(1, "#17466c");
-    ctx.fillStyle = shirt;
-    ctx.fill();
-
-    ctx.save();
-    ctx.clip();
-    ctx.globalAlpha = 0.16;
-    ctx.strokeStyle = "#7cb0df";
-    ctx.lineWidth = 1;
-    for (let x = -25; x <= 28; x += 7) {
+    ctx.setLineDash([]);
+    const shadowAlpha = this.game.isRidingCart() ? 0 : this.grounded ? 0.13 : 0.08;
+    if (shadowAlpha > 0) {
+      ctx.fillStyle = `rgba(35, 64, 92, ${shadowAlpha})`;
       ctx.beginPath();
-      ctx.moveTo(x, -16);
-      ctx.lineTo(x, 16);
-      ctx.stroke();
-    }
-    for (let y = -10; y <= 12; y += 6) {
-      ctx.beginPath();
-      ctx.moveTo(-30, y);
-      ctx.lineTo(34, y);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // передняя рука вытянута вперёд низко
-    ctx.strokeStyle = "#1d5684";
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(8, -2);
-    ctx.lineTo(20, 0);
-    ctx.lineTo(31, 3);
-    ctx.stroke();
-
-    // передняя нога длинная, почти вдоль пола
-    ctx.strokeStyle = "#173f63";
-    ctx.lineWidth = 8;
-    ctx.beginPath();
-    ctx.moveTo(2, 13);
-    ctx.lineTo(20, 18);
-    ctx.lineTo(39, 18);
-    ctx.stroke();
-
-    ctx.restore();
-
-    // Голова ближе к шее и корпусу.
-    this.drawHead(ctx, 10, -28, 21);
-  }
-
-  drawTorso(ctx, torsoTop, torsoHeight) {
-    const w = this.width;
-    const torsoBottom = torsoTop + torsoHeight;
-
-    ctx.save();
-    roundedRectPath(ctx, -w * 0.17, torsoTop, w * 0.34, torsoHeight, 14);
-    ctx.clip();
-
-    const shirt = ctx.createLinearGradient(0, torsoTop, 0, torsoBottom);
-    shirt.addColorStop(0, "#163957");
-    shirt.addColorStop(1, "#0f2a42");
-    ctx.fillStyle = shirt;
-    ctx.fillRect(-w * 0.24, torsoTop - 2, w * 0.48, torsoHeight + 4);
-
-    ctx.globalAlpha = 0.16;
-    ctx.strokeStyle = "#7cb0df";
-    ctx.lineWidth = 1;
-    for (let x = -w * 0.22; x <= w * 0.22; x += 6) {
-      ctx.beginPath();
-      ctx.moveTo(x, torsoTop - 2);
-      ctx.lineTo(x, torsoBottom + 2);
-      ctx.stroke();
-    }
-    for (let y = torsoTop - 2; y <= torsoBottom + 2; y += 6) {
-      ctx.beginPath();
-      ctx.moveTo(-w * 0.22, y);
-      ctx.lineTo(w * 0.22, y);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    ctx.fillStyle = "#10283f";
-    roundedRectPath(ctx, -w * 0.13, torsoBottom - 5, w * 0.26, 10, 5);
-    ctx.fill();
-  }
-
-  drawLegLimb(ctx, limb, back) {
-    ctx.strokeStyle = back ? "#234a71" : "#173f63";
-    ctx.lineWidth = back ? 7 : 8;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(limb.hipX, limb.hipY);
-    ctx.lineTo(limb.kneeX, limb.kneeY);
-    ctx.lineTo(limb.ankleX, limb.ankleY);
-    ctx.stroke();
-
-    ctx.fillStyle = back ? "#234a71" : "#173f63";
-    ctx.beginPath();
-    ctx.arc(limb.kneeX, limb.kneeY, back ? 2.3 : 2.9, 0, Math.PI * 2);
-    ctx.arc(limb.ankleX, limb.ankleY, back ? 1.8 : 2.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  drawArmLimb(ctx, limb, back) {
-    ctx.strokeStyle = back ? "#2a608f" : "#1d5684";
-    ctx.lineWidth = back ? 5 : 6;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(limb.shoulderX, limb.shoulderY);
-    ctx.lineTo(limb.elbowX, limb.elbowY);
-    ctx.lineTo(limb.handX, limb.handY);
-    ctx.stroke();
-
-    ctx.fillStyle = back ? "#2a608f" : "#1d5684";
-    ctx.beginPath();
-    ctx.arc(limb.handX, limb.handY, back ? 1.8 : 2.4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  drawHead(ctx, cx, cy, headRadius = 22) {
-    ctx.fillStyle = "#d6a787";
-    roundedRectPath(ctx, cx - 6, cy + headRadius - 4, 12, 13, 5);
-    ctx.fill();
-
-    if (this.usePhoto) {
-      this.drawPhotoHead(ctx, cx, cy, headRadius);
-    } else {
-      this.drawFallbackHead(ctx, cx, cy, headRadius);
-    }
-  }
-
-  drawPhotoHead(ctx, cx, cy, headRadius) {
-    ctx.save();
-    ctx.translate(cx - headRadius, cy - headRadius);
-    const drew = this.portraitTexture.draw(ctx, 0, 0, headRadius * 2, headRadius * 2);
-    if (!drew) {
-      ctx.restore();
-      this.drawFallbackHead(ctx, cx, cy, headRadius);
-      return;
-    }
-    ctx.restore();
-  }
-
-  drawFallbackHead(ctx, cx, cy, headRadius) {
-    const grad = ctx.createLinearGradient(0, cy - headRadius, 0, cy + headRadius);
-    grad.addColorStop(0, "#ffd9bf");
-    grad.addColorStop(1, "#efb88f");
-
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, headRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#4e3a2f";
-    ctx.beginPath();
-    ctx.arc(cx - 6, cy - 3, 2, 0, Math.PI * 2);
-    ctx.arc(cx + 6, cy - 3, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "#5a3f30";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy + 4, 6, 0, Math.PI);
-    ctx.stroke();
-  }
-}
-
-class Obstacle {
-  constructor(game, type, x) {
-    this.game = game;
-    this.type = type;
-    this.x = x;
-    this.width = type.width;
-    this.height = type.height;
-    this.y = game.groundY - type.height + (type.offsetY || 0);
-    this.phase = Math.random() * Math.PI * 2;
-    this.paperLabels = [];
-
-    if (type.kind === "paperPile") {
-      this.paperLabels = Array.from({ length: 4 }, () => 1 + Math.floor(Math.random() * 50));
-    } else if (type.kind === "paperHigh") {
-      this.paperLabels = Array.from({ length: 2 }, () => 1 + Math.floor(Math.random() * 50));
-    }
-  }
-
-  update(dt) {
-    this.x -= this.game.speed * dt;
-  }
-
-  getBounds() {
-    return {
-      x: this.x + (this.type.hitInsetX || 4),
-      y: this.y + (this.type.hitInsetY || 4),
-      width: this.width - 2 * (this.type.hitInsetX || 4),
-      height: this.height - 2 * (this.type.hitInsetY || 4),
-    };
-  }
-
-  draw(ctx, time) {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-
-    if (this.type.kind === "paperPile") {
-      this.drawPaperPile(ctx);
-    } else if (this.type.kind === "paperHigh") {
-      this.drawFlyingPapers(ctx, time);
-    } else if (this.type.kind === "customer") {
-      this.drawCustomer(ctx, time);
-    }
-
-    ctx.restore();
-  }
-
-  drawPaperRevision(ctx, x, y, number, scale = 1) {
-    const label = `Изм ${number}`;
-    const fontSize = Math.max(8, Math.round(8.5 * scale));
-    ctx.save();
-    ctx.font = `700 ${fontSize}px Arial`;
-    const width = Math.ceil(ctx.measureText(label).width) + 8;
-    const height = fontSize + 4;
-    ctx.fillStyle = "rgba(255, 244, 183, 0.98)";
-    ctx.strokeStyle = "#c18b00";
-    ctx.lineWidth = 1;
-    roundedRectPath(ctx, x - 2, y - 1, width, height, 4);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#7a1f10";
-    ctx.textBaseline = "top";
-    ctx.fillText(label, x + 2, y + 1);
-    ctx.restore();
-  }
-
-  drawPaperPile(ctx) {
-    for (let i = 0; i < 4; i++) {
-      ctx.save();
-      ctx.translate(i * 4, -i * 2);
-      ctx.rotate((-6 + i * 4) * Math.PI / 180);
-      ctx.fillStyle = i % 2 ? "#ffffff" : "#f7fbff";
-      ctx.strokeStyle = "#b7c8df";
-      ctx.lineWidth = 1.5;
-      roundedRectPath(ctx, 0, 8, this.width - 10, this.height - 14, 4);
+      ctx.ellipse(centerX, this.game.groundY - 4, sliding ? 40 : 28, sliding ? 7 : 6, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = "rgba(138, 167, 205, 0.6)";
-      for (let y = 16; y < this.height - 8; y += 7) {
-        ctx.fillRect(6, y, this.width - 22, 1.2);
-      }
-      this.drawPaperRevision(ctx, 6, 11, this.paperLabels[i] || 1, 1.02);
-      ctx.restore();
     }
-  }
 
-  drawFlyingPapers(ctx, time) {
-    const bob = Math.sin(time * 8 + this.phase) * 3;
-    ctx.translate(0, bob);
-
-    for (let i = 0; i < 2; i++) {
-      ctx.save();
-      ctx.translate(i * 18, i * 4);
-      ctx.rotate((Math.sin(time * 7 + this.phase + i) * 10 - 10) * Math.PI / 180);
+    if (this.landingDust > 0) {
+      ctx.globalAlpha = this.landingDust * 0.28;
       ctx.fillStyle = "#ffffff";
-      ctx.strokeStyle = "#bed0e4";
-      ctx.lineWidth = 1.5;
-      roundedRectPath(ctx, 0, 0, 34, 24, 4);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = "rgba(139, 167, 199, 0.65)";
-      for (let y = 10; y < 20; y += 5) {
-        ctx.fillRect(5, y, 20, 1.2);
-      }
-      this.drawPaperRevision(ctx, 4, 3, this.paperLabels[i] || 1, 0.92);
       ctx.beginPath();
-      ctx.moveTo(25, 0);
-      ctx.lineTo(34, 9);
-      ctx.lineTo(25, 9);
-      ctx.closePath();
-      ctx.fillStyle = "#edf4fb";
+      ctx.ellipse(centerX - 28 - (1 - this.landingDust) * 10, this.game.groundY - 6, 10, 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(centerX + 26 + (1 - this.landingDust) * 10, this.game.groundY - 5, 9, 3, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-
-  drawCustomer(ctx, time) {
-    const bounce = Math.sin(time * 7 + this.phase) * 1.5;
-    ctx.translate(0, bounce);
-
-    const headX = this.width * 0.52;
-    const headY = 16;
-    const bodyTop = 29;
-    const bodyBottom = this.height - 18;
-
-    ctx.fillStyle = "#6a84aa";
-    roundedRectPath(ctx, this.width * 0.26, bodyTop, this.width * 0.5, bodyBottom - bodyTop, 7);
-    ctx.fill();
-
-    ctx.strokeStyle = "#556e92";
-    ctx.lineWidth = 3.5;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(this.width * 0.3, bodyTop + 12);
-    ctx.lineTo(this.width * 0.08, bodyTop + 26);
-    ctx.moveTo(this.width * 0.72, bodyTop + 12);
-    ctx.lineTo(this.width * 0.93, bodyTop + 28);
-    ctx.moveTo(this.width * 0.4, bodyBottom);
-    ctx.lineTo(this.width * 0.28, this.height - 2);
-    ctx.moveTo(this.width * 0.62, bodyBottom);
-    ctx.lineTo(this.width * 0.8, this.height - 2);
-    ctx.stroke();
-
-    ctx.fillStyle = "#f0c9a4";
-    ctx.beginPath();
-    ctx.arc(headX, headY, 13, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#d5a94c";
-    ctx.beginPath();
-    ctx.arc(headX, headY - 2, 13, Math.PI, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#26384d";
-    ctx.fillRect(this.width * 0.38, bodyTop + 10, this.width * 0.25, 4);
-  }
-}
-
-class ObstacleManager {
-  constructor(game) {
-    this.game = game;
-    this.items = [];
-    this.cooldown = 0.82;
-    this.lastType = null;
-    this.types = [
-      {
-        kind: "paperPile",
-        width: 54,
-        height: 34,
-        minGap: 235,
-        difficulty: 0,
-        behavior: "jump",
-        hitInsetX: 6,
-        hitInsetY: 5,
-      },
-      {
-        kind: "paperHigh",
-        width: 58,
-        height: 30,
-        minGap: 265,
-        difficulty: 0.12,
-        behavior: "duck",
-        offsetY: -110,
-        hitInsetX: 5,
-        hitInsetY: 3,
-      },
-      {
-        kind: "customer",
-        width: 48,
-        height: 80,
-        minGap: 295,
-        difficulty: 0.24,
-        behavior: "jump",
-        hitInsetX: 7,
-        hitInsetY: 5,
-      },
-    ];
-  }
-
-  reset() {
-    this.items.length = 0;
-    this.cooldown = 0.82;
-    this.lastType = null;
-  }
-
-  chooseType() {
-    const level = this.game.speed / CONFIG.baseSpeed;
-    let pool = this.types.filter((t) => t.difficulty <= level * 0.55 + 0.35);
-    if (!pool.length) pool = this.types.slice();
-
-    if (Math.random() < 0.4) {
-      const duckOnly = pool.filter((t) => t.behavior === "duck");
-      if (duckOnly.length) pool = duckOnly.concat(pool);
+      ctx.globalAlpha = 1;
     }
 
-    const available = pool.filter((t) => t.kind !== this.lastType);
-    const source = available.length ? available : pool;
-    const next = source[Math.floor(Math.random() * source.length)] || pool[0];
-    this.lastType = next.kind;
-    return next;
-  }
+    const sprite = this.spriteSet ? this.spriteSet.get(this.getSpriteFrameName()) : null;
+    if (sprite) {
+      let drawH = 146;
+      let xOffset = 0;
+      let yOffset = 0;
 
-  update(dt) {
-    this.cooldown -= dt;
+      if (sliding) {
+        drawH = 90;
+        xOffset = -16;
+        yOffset = 2;
+      } else if (airborne && !descending) {
+        drawH = 138;
+        yOffset = -8;
+      } else if (descending) {
+        drawH = 120;
+        xOffset = 4;
+        yOffset = -2;
+      }
 
-    if (this.cooldown <= 0) {
-      const type = this.chooseType();
-      this.items.push(new Obstacle(this.game, type, this.game.worldWidth + 24));
-
-      const speedFactor = this.game.speed / CONFIG.baseSpeed;
-      const baseGap = type.minGap / Math.max(1, speedFactor * 0.88);
-      const randomGap = 80 + Math.random() * 150;
-      const gapDistance = Math.max(190, baseGap + randomGap);
-      this.cooldown = gapDistance / this.game.speed / CONFIG.obstacleFrequency;
+      const aspect = sprite.naturalWidth / Math.max(1, sprite.naturalHeight);
+      const drawW = drawH * aspect;
+      const drawX = centerX - drawW * 0.5 + xOffset;
+      const drawY = groundY - drawH + yOffset + runBob;
+      ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+    } else {
+      this.drawFallback(ctx, centerX, groundY, runBob, sliding, airborne);
     }
-
-    for (const obs of this.items) obs.update(dt);
-    this.items = this.items.filter((o) => o.x + o.width > -20);
-  }
-
-  draw(ctx) {
-    for (const obs of this.items) obs.draw(ctx, this.game.time);
-  }
-}
-
-class TeaPickup {
-  constructor(game, x) {
-    this.game = game;
-    this.width = 42;
-    this.height = 42;
-    this.x = x;
-    this.y = game.groundY - 122 - Math.random() * 20;
-    this.phase = Math.random() * Math.PI * 2;
-  }
-
-  update(dt) {
-    this.x -= this.game.speed * dt;
-  }
-
-  getBounds() {
-    return {
-      x: this.x + 4,
-      y: this.y + 5,
-      width: this.width - 8,
-      height: this.height - 10,
-    };
-  }
-
-  draw(ctx, time) {
-    const bob = Math.sin(time * 6 + this.phase) * 4;
-    ctx.save();
-    ctx.translate(this.x, this.y + bob);
-
-    ctx.fillStyle = "rgba(255,255,255,0.24)";
-    ctx.beginPath();
-    ctx.arc(this.width / 2, this.height / 2, 21, 0, Math.PI * 2);
-    ctx.fill();
-
-    // saucer
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.beginPath();
-    ctx.ellipse(21, 29, 14, 4.4, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#cad8e8";
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-
-    // cup body
-    ctx.fillStyle = "#ffffff";
-    roundedRectPath(ctx, 9, 12, 19, 14, 5);
-    ctx.fill();
-    ctx.strokeStyle = "#c6d8ea";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // tea inside
-    ctx.fillStyle = "#be7f33";
-    roundedRectPath(ctx, 11, 14, 15, 8, 3);
-    ctx.fill();
-
-    // handle
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 3.2;
-    ctx.beginPath();
-    ctx.arc(30, 19, 5.2, -Math.PI / 2, Math.PI / 2);
-    ctx.stroke();
-
-    // steam
-    ctx.strokeStyle = "rgba(255,255,255,0.82)";
-    ctx.lineWidth = 1.7;
-    ctx.beginPath();
-    ctx.moveTo(14, 10);
-    ctx.bezierCurveTo(11, 6, 12, 3, 15, 1);
-    ctx.moveTo(20, 10);
-    ctx.bezierCurveTo(17, 6, 18, 3, 21, 1);
-    ctx.moveTo(26, 10);
-    ctx.bezierCurveTo(23, 6, 24, 3, 27, 1);
-    ctx.stroke();
 
     ctx.restore();
   }
-}
 
-class TeaManager {
-  constructor(game) {
-    this.game = game;
-    this.items = [];
-    this.cooldown = this.randomCooldown();
-  }
-
-  randomCooldown() {
-    return CONFIG.teaSpawnMin + Math.random() * (CONFIG.teaSpawnMax - CONFIG.teaSpawnMin);
-  }
-
-  reset() {
-    this.items.length = 0;
-    this.cooldown = 1.8;
-  }
-
-  update(dt) {
-    this.cooldown -= dt;
-    if (this.cooldown <= 0) {
-      this.items.push(new TeaPickup(this.game, this.game.worldWidth + 40));
-      this.cooldown = this.randomCooldown();
-    }
-
-    for (const tea of this.items) tea.update(dt);
-    this.items = this.items.filter((t) => t.x + t.width > -20);
-  }
-
-  draw(ctx) {
-    for (const tea of this.items) tea.draw(ctx, this.game.time);
+  drawFallback(ctx, centerX, groundY, runBob, sliding, airborne) {
+    const y = groundY - 112 + runBob;
+    ctx.fillStyle = "#13375a";
+    roundedRectPath(ctx, centerX - 20, y + 22, 40, 46, 14);
+    ctx.fill();
+    ctx.strokeStyle = "#204f7a";
+    ctx.lineWidth = 7;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(centerX - 8, y + 68);
+    ctx.lineTo(centerX - (sliding ? 18 : 22), y + 98);
+    ctx.moveTo(centerX + 8, y + 68);
+    ctx.lineTo(centerX + (sliding ? 34 : 26), y + (sliding ? 82 : 98));
+    ctx.moveTo(centerX - 18, y + 34);
+    ctx.lineTo(centerX - 36, y + 52);
+    ctx.moveTo(centerX + 18, y + 34);
+    ctx.lineTo(centerX + 36, y + (airborne ? 20 : 54));
+    ctx.stroke();
+    ctx.fillStyle = "#efc49e";
+    ctx.beginPath();
+    ctx.arc(centerX + 2, y + 10, 20, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
-
 
 class SpriteSet {
   constructor(images) {
@@ -1282,9 +610,7 @@ function loadImage(path, timeoutMs = 3000) {
 function loadPlayerSprites(characterId = CHARACTERS[0].id) {
   const character = getCharacterById(characterId);
   const names = ["run1", "run2", "run3", "run4", "jump", "land", "slide", "hurt"];
-  return Promise.all(
-    names.map((name) => loadImage(`${character.path}/${name}.png`).then((image) => [name, image]))
-  ).then((entries) => {
+  return Promise.all(names.map((name) => loadImage(`${character.path}/${name}.png`).then((image) => [name, image]))).then((entries) => {
     const images = {};
     for (const [name, image] of entries) {
       if (image) images[name] = image;
@@ -1293,102 +619,548 @@ function loadPlayerSprites(characterId = CHARACTERS[0].id) {
   });
 }
 
-const __originalPlayerDraw = Player.prototype.draw;
-
-Player.prototype.getSpriteFrameName = function () {
-  if (this.ducking && this.grounded) return "slide";
-  if (!this.grounded) return this.vy < 120 ? "jump" : "land";
-  const frames = ["run1", "run2", "run3", "run4"];
-  const phase = wrap01(this.runTime * 2.65);
-  const index = Math.floor(phase * frames.length) % frames.length;
-  return frames[index];
-};
-
-Player.prototype.draw = function (ctx) {
-  const spriteSet = this.spriteSet;
-  if (!spriteSet || !spriteSet.isReady()) {
-    __originalPlayerDraw.call(this, ctx);
-    return;
+class Obstacle {
+  constructor(game, type, x) {
+    this.game = game;
+    this.type = type;
+    this.x = x;
+    this.width = type.width;
+    this.height = type.height;
+    this.y = game.groundY - type.height + (type.offsetY || 0);
+    this.phase = Math.random() * Math.PI * 2;
   }
 
-  const frameName = this.getSpriteFrameName();
-  const sprite = spriteSet.get(frameName);
-  if (!sprite) {
-    __originalPlayerDraw.call(this, ctx);
-    return;
+  update(dt) {
+    this.x -= this.game.speed * dt;
   }
 
-  const groundY = this.game.groundY;
-  const bodyBaseY = this.y + this.height;
-  const centerX = this.x + this.width * 0.5;
-  const airborne = !this.grounded;
-  const descending = airborne && this.vy >= 120;
-  const sliding = this.ducking && this.grounded;
-  const runBob = this.grounded && !sliding ? Math.sin(this.runTime * 18) * 1.6 : 0;
-  const airGap = Math.max(0, groundY - bodyBaseY);
-
-  let drawH = 122;
-  let xOffset = 0;
-  let yOffset = 0;
-
-  if (sliding) {
-    drawH = 68;
-    xOffset = -10;
-    yOffset = 2;
-  } else if (airborne && !descending) {
-    drawH = 118;
-    yOffset = -5;
-  } else if (descending) {
-    drawH = 98;
-    xOffset = 2;
-    yOffset = 0;
+  getBounds() {
+    return {
+      x: this.x + (this.type.hitInsetX || 4),
+      y: this.y + (this.type.hitInsetY || 4),
+      width: this.width - 2 * (this.type.hitInsetX || 4),
+      height: this.height - 2 * (this.type.hitInsetY || 4),
+    };
   }
 
-  const aspect = sprite.naturalWidth / Math.max(1, sprite.naturalHeight);
-  const drawW = drawH * aspect;
-  const drawX = centerX - drawW * 0.5 + xOffset;
-  const drawY = bodyBaseY - drawH + yOffset + runBob;
-
-  ctx.save();
-
-  const shadowAlpha = this.grounded ? 0.18 : clamp(0.18 - airGap / 320, 0.045, 0.16);
-  const shadowScale = this.grounded ? 1 : clamp(1 - airGap / 260, 0.45, 0.95);
-  ctx.fillStyle = `rgba(35, 64, 92, ${shadowAlpha})`;
-  ctx.beginPath();
-  ctx.ellipse(centerX + (sliding ? 6 : 0), groundY - 4, (sliding ? 42 : 30) * shadowScale, (sliding ? 7 : 6) * shadowScale, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (airborne && airGap > 12) {
+  draw(ctx) {
     ctx.save();
-    ctx.setLineDash([5, 6]);
-    ctx.strokeStyle = "rgba(35, 64, 92, 0.16)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(centerX - 24, bodyBaseY + 2);
-    ctx.lineTo(centerX - 24, groundY - 8);
-    ctx.stroke();
+    ctx.translate(this.x, this.y);
+    ctx.setLineDash([]);
+    switch (this.type.kind) {
+      case "houseLow":
+        this.drawBuilding(ctx, 58, 48, 2, 2);
+        break;
+      case "houseTall":
+        this.drawBuilding(ctx, 72, 78, 3, 3);
+        break;
+      case "towerSlim":
+        this.drawTower(ctx);
+        break;
+      case "skybridge":
+        this.drawSkybridge(ctx);
+        break;
+      default:
+        this.drawBuilding(ctx, this.width, this.height, 2, 2);
+        break;
+    }
     ctx.restore();
   }
 
-  if (this.landingDust > 0) {
-    ctx.globalAlpha = this.landingDust * 0.30;
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.ellipse(centerX - 28 - (1 - this.landingDust) * 10, groundY - 6, 10, 3, 0, 0, Math.PI * 2);
-    ctx.ellipse(centerX + 26 + (1 - this.landingDust) * 10, groundY - 5, 9, 3, 0, 0, Math.PI * 2);
+  drawBuilding(ctx, width, height, cols, rows) {
+    ctx.fillStyle = "#586e83";
+    roundedRectPath(ctx, 0, 0, width, height, 8);
     ctx.fill();
-    ctx.globalAlpha = 1;
+
+    const wall = ctx.createLinearGradient(0, 0, 0, height);
+    wall.addColorStop(0, "#8b786d");
+    wall.addColorStop(1, "#665048");
+    ctx.fillStyle = wall;
+    roundedRectPath(ctx, 4, 4, width - 8, height - 8, 6);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+    ctx.lineWidth = 1;
+    for (let i = 8; i < width - 8; i += 12) {
+      ctx.beginPath();
+      ctx.moveTo(i, 4);
+      ctx.lineTo(i, height - 4);
+      ctx.stroke();
+    }
+    for (let i = 8; i < height - 8; i += 10) {
+      ctx.beginPath();
+      ctx.moveTo(4, i);
+      ctx.lineTo(width - 4, i);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#2a445c";
+    const paddingX = 10;
+    const paddingY = 12;
+    const gapX = 8;
+    const gapY = 8;
+    const winW = Math.max(10, Math.floor((width - paddingX * 2 - gapX * (cols - 1)) / cols));
+    const winH = Math.max(9, Math.floor((height - paddingY * 2 - gapY * (rows - 1)) / rows));
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = paddingX + col * (winW + gapX);
+        const y = paddingY + row * (winH + gapY);
+        roundedRectPath(ctx, x, y, winW, winH, 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(170, 212, 255, 0.5)";
+        roundedRectPath(ctx, x + 2, y + 2, winW - 4, winH - 4, 2);
+        ctx.fill();
+        ctx.fillStyle = "#2a445c";
+      }
+    }
+
+    ctx.fillStyle = "#506578";
+    roundedRectPath(ctx, -3, -5, width + 6, 10, 5);
+    ctx.fill();
+    ctx.fillStyle = "#6b849a";
+    roundedRectPath(ctx, -3, height - 8, width + 6, 9, 5);
+    ctx.fill();
   }
 
-  ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+  drawTower(ctx) {
+    const width = this.width;
+    const height = this.height;
+    ctx.fillStyle = "#5a7084";
+    roundedRectPath(ctx, 8, 0, width - 16, height, 10);
+    ctx.fill();
+
+    const glass = ctx.createLinearGradient(0, 0, width, 0);
+    glass.addColorStop(0, "#334455");
+    glass.addColorStop(0.5, "#7db5da");
+    glass.addColorStop(1, "#334455");
+    ctx.fillStyle = glass;
+    roundedRectPath(ctx, 14, 8, width - 28, height - 16, 9);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    for (let y = 14; y < height - 14; y += 16) {
+      ctx.fillRect(18, y, width - 36, 3);
+    }
+
+    ctx.fillStyle = "#6c849a";
+    roundedRectPath(ctx, 4, height - 8, width - 8, 10, 5);
+    ctx.fill();
+  }
+
+  drawSkybridge(ctx) {
+    const width = this.width;
+    const height = this.height;
+    ctx.fillStyle = "#61768a";
+    roundedRectPath(ctx, 0, 0, width, height, 8);
+    ctx.fill();
+
+    const wall = ctx.createLinearGradient(0, 0, 0, height);
+    wall.addColorStop(0, "#8e7c70");
+    wall.addColorStop(1, "#6e584f");
+    ctx.fillStyle = wall;
+    roundedRectPath(ctx, 4, 4, width - 8, height - 8, 6);
+    ctx.fill();
+
+    ctx.fillStyle = "#33506a";
+    for (let x = 12; x < width - 12; x += 18) {
+      roundedRectPath(ctx, x, 11, 12, 12, 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(160, 210, 255, 0.45)";
+      roundedRectPath(ctx, x + 2, 13, 8, 8, 2);
+      ctx.fill();
+      ctx.fillStyle = "#33506a";
+    }
+
+    ctx.fillStyle = "#556b80";
+    roundedRectPath(ctx, -2, height - 10, width + 4, 10, 5);
+    ctx.fill();
+  }
+}
+
+class ObstacleManager {
+  constructor(game) {
+    this.game = game;
+    this.items = [];
+    this.cooldown = 0.9;
+    this.lastType = null;
+    this.types = [
+      {
+        kind: "houseLow",
+        width: 58,
+        height: 48,
+        minGap: 250,
+        difficulty: 0,
+        behavior: "jump",
+        hitInsetX: 6,
+        hitInsetY: 6,
+      },
+      {
+        kind: "houseTall",
+        width: 72,
+        height: 78,
+        minGap: 290,
+        difficulty: 0.18,
+        behavior: "jump",
+        hitInsetX: 6,
+        hitInsetY: 6,
+      },
+      {
+        kind: "towerSlim",
+        width: 54,
+        height: 96,
+        minGap: 336,
+        difficulty: 0.30,
+        behavior: "jump",
+        hitInsetX: 5,
+        hitInsetY: 6,
+      },
+      {
+        kind: "skybridge",
+        width: 104,
+        height: 36,
+        minGap: 300,
+        difficulty: 0.14,
+        behavior: "duck",
+        offsetY: -88,
+        hitInsetX: 6,
+        hitInsetY: 4,
+      },
+    ];
+  }
+
+  reset() {
+    this.items.length = 0;
+    this.cooldown = 0.9;
+    this.lastType = null;
+  }
+
+  chooseType() {
+    const level = this.game.speed / CONFIG.baseSpeed;
+    let pool = this.types.filter((t) => t.difficulty <= level * 0.55 + 0.35);
+    if (!pool.length) pool = this.types.slice();
+    const available = pool.filter((t) => t.kind !== this.lastType);
+    const source = available.length ? available : pool;
+    const next = source[Math.floor(Math.random() * source.length)] || pool[0];
+    this.lastType = next.kind;
+    return next;
+  }
+
+  update(dt) {
+    this.cooldown -= dt;
+    if (this.cooldown <= 0) {
+      const type = this.chooseType();
+      this.items.push(new Obstacle(this.game, type, this.game.worldWidth + 40));
+      const speedFactor = this.game.speed / CONFIG.baseSpeed;
+      const baseGap = type.minGap / Math.max(1, speedFactor * 0.86);
+      const randomGap = 90 + Math.random() * 140;
+      const gapDistance = Math.max(220, baseGap + randomGap);
+      this.cooldown = gapDistance / this.game.speed / CONFIG.obstacleFrequency;
+    }
+
+    for (const item of this.items) item.update(dt);
+    this.items = this.items.filter((item) => item.x + item.width > -40);
+  }
+
+  draw(ctx) {
+    for (const item of this.items) item.draw(ctx);
+  }
+}
+
+class BeveragePickup {
+  constructor(game, kind, x) {
+    this.game = game;
+    this.kind = kind;
+    this.x = x;
+    this.phase = Math.random() * Math.PI * 2;
+    if (kind === "teapot") {
+      this.width = 54;
+      this.height = 54;
+      this.y = game.groundY - 154 - Math.random() * 20;
+    } else {
+      this.width = 42;
+      this.height = 42;
+      this.y = game.groundY - 146 - Math.random() * 18;
+    }
+  }
+
+  update(dt) {
+    this.x -= this.game.speed * dt;
+  }
+
+  getBounds() {
+    return {
+      x: this.x + 5,
+      y: this.y + 6,
+      width: this.width - 10,
+      height: this.height - 12,
+    };
+  }
+
+  draw(ctx, time) {
+    const bob = Math.sin(time * 5.5 + this.phase) * 4;
+    ctx.save();
+    ctx.translate(this.x, this.y + bob);
+    ctx.setLineDash([]);
+    ctx.fillStyle = this.kind === "teapot" ? "rgba(255,233,180,0.17)" : "rgba(255,255,255,0.23)";
+    ctx.beginPath();
+    ctx.arc(this.width * 0.5, this.height * 0.5, Math.max(this.width, this.height) * 0.52, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (this.kind === "teapot") {
+      this.drawTeapot(ctx);
+    } else {
+      this.drawCup(ctx);
+    }
+    ctx.restore();
+  }
+
+  drawCup(ctx) {
+    ctx.fillStyle = "#f8eed8";
+    roundedRectPath(ctx, 11, 14, 21, 16, 7);
+    ctx.fill();
+    ctx.strokeStyle = "#b69a71";
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+
+    ctx.fillStyle = "#cf8a30";
+    roundedRectPath(ctx, 13, 16, 17, 7, 3);
+    ctx.fill();
+
+    ctx.strokeStyle = "#e7dac0";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(33, 22, 5, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#6d8b62";
+    ctx.beginPath();
+    ctx.ellipse(22, 25, 3, 5, 0.7, 0, Math.PI * 2);
+    ctx.ellipse(18, 24, 2.5, 4.2, -0.4, 0, Math.PI * 2);
+    ctx.ellipse(26, 24, 2.5, 4.2, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(17, 11);
+    ctx.bezierCurveTo(14, 7, 15, 4, 17, 1);
+    ctx.moveTo(23, 11);
+    ctx.bezierCurveTo(20, 7, 21, 4, 23, 1);
+    ctx.stroke();
+  }
+
+  drawTeapot(ctx) {
+    ctx.fillStyle = "rgba(255,255,255,0.24)";
+    ctx.beginPath();
+    ctx.ellipse(24, 45, 18, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const body = ctx.createLinearGradient(0, 10, 0, 48);
+    body.addColorStop(0, "rgba(255, 245, 220, 0.95)");
+    body.addColorStop(1, "rgba(255, 201, 82, 0.9)");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(14, 16);
+    ctx.quadraticCurveTo(12, 10, 20, 8);
+    ctx.lineTo(30, 8);
+    ctx.quadraticCurveTo(40, 10, 39, 18);
+    ctx.lineTo(39, 34);
+    ctx.quadraticCurveTo(38, 44, 28, 45);
+    ctx.lineTo(18, 45);
+    ctx.quadraticCurveTo(8, 44, 8, 34);
+    ctx.lineTo(8, 18);
+    ctx.quadraticCurveTo(8, 11, 14, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(160, 120, 45, 0.8)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.7)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(13, 18);
+    ctx.bezierCurveTo(6, 18, 2, 17, 2, 15);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(41, 26, 8, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#c98d24";
+    ctx.beginPath();
+    ctx.arc(24, 26, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255, 221, 118, 0.8)";
+    ctx.beginPath();
+    ctx.arc(24, 26, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#cc9a4c";
+    roundedRectPath(ctx, 18, 2, 12, 6, 4);
+    ctx.fill();
+  }
+}
+
+class BeverageManager {
+  constructor(game) {
+    this.game = game;
+    this.items = [];
+    this.cooldown = this.randomCooldown();
+  }
+
+  randomCooldown() {
+    return CONFIG.beverageSpawnMin + Math.random() * (CONFIG.beverageSpawnMax - CONFIG.beverageSpawnMin);
+  }
+
+  reset() {
+    this.items.length = 0;
+    this.cooldown = 2.3;
+  }
+
+  update(dt) {
+    this.cooldown -= dt;
+    if (this.cooldown <= 0) {
+      const kind = Math.random() < 0.72 ? "cup" : "teapot";
+      this.items.push(new BeveragePickup(this.game, kind, this.game.worldWidth + 40));
+      this.cooldown = this.randomCooldown();
+    }
+
+    for (const item of this.items) item.update(dt);
+    this.items = this.items.filter((item) => item.x + item.width > -30);
+  }
+
+  draw(ctx) {
+    for (const item of this.items) item.draw(ctx, this.game.time);
+  }
+}
+
+class CartPickup {
+  constructor(game, x) {
+    this.game = game;
+    this.x = x;
+    this.width = 98;
+    this.height = 58;
+    this.y = game.groundY - this.height + 2;
+    this.phase = Math.random() * Math.PI * 2;
+  }
+
+  update(dt) {
+    this.x -= this.game.speed * dt;
+  }
+
+  getBounds() {
+    return {
+      x: this.x + 4,
+      y: this.y + 6,
+      width: this.width - 8,
+      height: this.height - 8,
+    };
+  }
+
+  draw(ctx, time) {
+    ctx.save();
+    ctx.translate(this.x, this.y + Math.sin(time * 8 + this.phase) * 1.5);
+    drawCartIllustration(ctx, 0, 0, this.width, this.height);
+    ctx.restore();
+  }
+}
+
+function drawCartIllustration(ctx, x, y, width, height) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "rgba(0,0,0,0.12)";
+  ctx.beginPath();
+  ctx.ellipse(width * 0.5, height + 4, width * 0.42, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const body = ctx.createLinearGradient(0, 8, 0, height - 8);
+  body.addColorStop(0, "#5b6476");
+  body.addColorStop(1, "#252b37");
+  ctx.fillStyle = body;
+  roundedRectPath(ctx, 14, 10, width - 26, height - 20, 10);
+  ctx.fill();
+
+  ctx.strokeStyle = "#111823";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = "#2f3746";
+  roundedRectPath(ctx, 20, 4, width - 34, 12, 6);
+  ctx.fill();
+
+  ctx.fillStyle = "#252b37";
+  roundedRectPath(ctx, 18, height - 15, width - 30, 11, 6);
+  ctx.fill();
+
+  ctx.fillStyle = "#f6b21f";
+  for (let i = 0; i < 4; i++) {
+    ctx.save();
+    ctx.translate(31 + i * 14, 32);
+    ctx.rotate(-0.5);
+    ctx.fillRect(0, 0, 8, 16);
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = "#2a2f3b";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(12, 26);
+  ctx.lineTo(3, 26);
+  ctx.lineTo(3, 40);
+  ctx.stroke();
+
+  ctx.fillStyle = "#2c2f3a";
+  ctx.beginPath();
+  ctx.arc(28, height - 2, 9, 0, Math.PI * 2);
+  ctx.arc(width - 28, height - 2, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#7e8596";
+  ctx.beginPath();
+  ctx.arc(28, height - 2, 4.5, 0, Math.PI * 2);
+  ctx.arc(width - 28, height - 2, 4.5, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.restore();
-};
+}
+
+class CartManager {
+  constructor(game) {
+    this.game = game;
+    this.items = [];
+    this.cooldown = this.randomCooldown();
+  }
+
+  randomCooldown() {
+    return CONFIG.cartSpawnMin + Math.random() * (CONFIG.cartSpawnMax - CONFIG.cartSpawnMin);
+  }
+
+  reset() {
+    this.items.length = 0;
+    this.cooldown = 8.5;
+  }
+
+  update(dt) {
+    this.cooldown -= dt;
+    if (this.cooldown <= 0) {
+      this.items.push(new CartPickup(this.game, this.game.worldWidth + 80));
+      this.cooldown = this.randomCooldown();
+    }
+    for (const item of this.items) item.update(dt);
+    this.items = this.items.filter((item) => item.x + item.width > -60);
+  }
+
+  draw(ctx) {
+    for (const item of this.items) item.draw(ctx, this.game.time);
+  }
+}
 
 class InputController {
   constructor(game) {
     this.game = game;
     this.touchStartY = null;
-
     this.bindKeyboard();
     this.bindPointer();
     this.bindUIButtons();
@@ -1431,8 +1203,6 @@ class InputController {
         this.game.togglePause();
       }
     });
-
-
   }
 
   bindPointer() {
@@ -1467,54 +1237,56 @@ class InputController {
     this.game.canvas.addEventListener("pointercancel", resetTouch);
 
     const duckBtn = document.getElementById("duckBtn");
-    duckBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      this.game.userGesture();
-      if (!this.game.start()) return;
-      this.game.player.startSlide();
-    });
+    if (duckBtn) {
+      duckBtn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        this.game.userGesture();
+        if (!this.game.start()) return;
+        this.game.player.startSlide();
+      });
+    }
   }
 
   bindUIButtons() {
-    document.getElementById("restartBtn").addEventListener("click", () => {
+    document.getElementById("restartBtn")?.addEventListener("click", () => {
       this.game.userGesture();
       this.game.restart();
     });
 
-    document.getElementById("pauseBtn").addEventListener("click", () => {
+    document.getElementById("pauseBtn")?.addEventListener("click", () => {
       this.game.userGesture();
       this.game.togglePause();
     });
 
-    document.getElementById("fullscreenBtn").addEventListener("click", () => {
+    document.getElementById("fullscreenBtn")?.addEventListener("click", () => {
       try {
         const shell = document.querySelector(".game-shell");
         if (!document.fullscreenElement) {
-          if (shell.requestFullscreen) shell.requestFullscreen();
+          if (shell?.requestFullscreen) shell.requestFullscreen();
         } else if (document.exitFullscreen) {
           document.exitFullscreen();
         }
       } catch {
-        // Fullscreen не обязателен для работы игры.
+        // no-op
       }
     });
   }
 }
 
 class Game {
-  constructor(canvas, portraitTexture) {
+  constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-
     this.worldWidth = canvas.width;
     this.worldHeight = canvas.height;
     this.groundY = this.worldHeight - CONFIG.groundHeight;
 
     this.audio = new AudioEngine();
     this.background = new Background(this);
-    this.player = new Player(this, portraitTexture);
+    this.player = new Player(this);
     this.obstacles = new ObstacleManager(this);
-    this.teaManager = new TeaManager(this);
+    this.beverages = new BeverageManager(this);
+    this.carts = new CartManager(this);
     this.input = new InputController(this);
 
     this.state = "select";
@@ -1527,9 +1299,13 @@ class Game {
     this.hitFlash = 0;
     this.shake = 0;
     this.lastScoreMilestone = 0;
-    this.workProgress = 0;
+    this.healthUnits = CONFIG.maxHealthUnits;
+    this.invulnerabilityTimer = 0;
     this.slowTimer = 0;
-    this.teaCount = 0;
+    this.cartRideTimer = 0;
+    this.cupCount = 0;
+    this.teapotCount = 0;
+
     this.playerNameInput = document.getElementById("playerNameInput");
     this.leaderboardList = document.getElementById("leaderboardList");
     this.leaderboardStatus = document.getElementById("leaderboardStatus");
@@ -1540,6 +1316,7 @@ class Game {
     this.characterStatus = document.getElementById("characterStatus");
     this.characterGrid = document.getElementById("characterGrid");
     this.currentCharacterId = localStorage.getItem(CHARACTER_STORAGE_KEY) || CHARACTERS[0].id;
+
     if (this.playerNameInput) {
       this.playerNameInput.value = this.playerName;
       this.playerNameInput.addEventListener("input", () => {
@@ -1547,6 +1324,7 @@ class Game {
         localStorage.setItem(PLAYER_NAME_KEY, this.playerName);
       });
     }
+
     this.updateLeaderboardUI();
     this.initOnlineLeaderboard();
     this.setupCharacterSelect();
@@ -1557,13 +1335,20 @@ class Game {
     requestAnimationFrame(this.loop.bind(this));
   }
 
+  isRidingCart() {
+    return this.cartRideTimer > 0;
+  }
+
+  isInvulnerable() {
+    return this.invulnerabilityTimer > 0 || this.isRidingCart();
+  }
+
   setCharacterStatus(text) {
     if (this.characterStatus) this.characterStatus.textContent = text;
   }
 
   setupCharacterSelect() {
     if (!this.characterGrid) return;
-
     this.characterGrid.innerHTML = CHARACTERS.map((character) => `
       <button class="character-card" type="button" data-character-id="${character.id}">
         <img src="${character.preview}" alt="${character.name}" loading="lazy" />
@@ -1580,7 +1365,8 @@ class Game {
       this.selectCharacter(card.dataset.characterId);
     });
 
-    this.setCharacterStatus("Выбери персонажа перед стартом игры.");
+    this.updateCharacterCards(this.currentCharacterId, this.currentCharacterId);
+    this.selectCharacter(this.currentCharacterId);
   }
 
   updateCharacterCards(activeId, loadingId = null) {
@@ -1598,34 +1384,35 @@ class Game {
     this.setCharacterStatus(`Загружается персонаж: ${character.name}...`);
     this.updateCharacterCards(character.id, character.id);
 
-    loadPlayerSprites(character.id).then((spriteSet) => {
-      if (!spriteSet || !spriteSet.isReady()) {
-        this.setCharacterStatus("Не удалось загрузить спрайты персонажа. Проверь папку assets/characters/.");
+    loadPlayerSprites(character.id)
+      .then((spriteSet) => {
+        if (!spriteSet || !spriteSet.isReady()) {
+          this.setCharacterStatus("Не удалось загрузить спрайты персонажа. Проверь папку assets/characters/.");
+          this.updateCharacterCards(null, null);
+          return;
+        }
+        this.player.spriteSet = spriteSet;
+        localStorage.setItem(CHARACTER_STORAGE_KEY, character.id);
+        this.state = "ready";
+        this.updateCharacterCards(character.id, null);
+        this.setCharacterStatus(`Выбран персонаж: ${character.name}. Нажми Space или ↑ для старта.`);
+      })
+      .catch(() => {
+        this.setCharacterStatus("Ошибка загрузки персонажа. Проверь структуру папок и имена PNG-файлов.");
         this.updateCharacterCards(null, null);
-        return;
-      }
-
-      this.player.spriteSet = spriteSet;
-      localStorage.setItem(CHARACTER_STORAGE_KEY, character.id);
-      this.state = "ready";
-      this.updateCharacterCards(character.id, null);
-      this.setCharacterStatus(`Выбран персонаж: ${character.name}. Нажми Space или ↑ для старта.`);
-    }).catch(() => {
-      this.setCharacterStatus("Ошибка загрузки персонажа. Проверь структуру папок и имена PNG-файлов.");
-      this.updateCharacterCards(null, null);
-    });
+      });
   }
 
   userGesture() {
     this.audio.ensure();
-    if (this.audio.ctx && this.audio.ctx.resume) {
+    if (this.audio.ctx?.resume) {
       this.audio.ctx.resume();
     }
   }
 
   onResize() {
     const ratio = this.worldWidth / this.worldHeight;
-    const maxW = Math.min(window.innerWidth - 40, 1180);
+    const maxW = Math.min(window.innerWidth - 36, 1240);
     const w = Math.max(320, maxW);
     const h = w / ratio;
     this.canvas.style.width = `${w}px`;
@@ -1633,10 +1420,6 @@ class Game {
   }
 
   start() {
-    if (this.state === "select") {
-      this.drawOverlayText(ctx, "Выбери персонажа", "Перед началом игры нажми на карточку персонажа ниже игрового поля.", 0.92);
-    }
-
     if (this.state === "ready") {
       this.state = "running";
       return true;
@@ -1653,12 +1436,16 @@ class Game {
     this.hitFlash = 0;
     this.shake = 0;
     this.lastScoreMilestone = 0;
-    this.workProgress = 0;
+    this.healthUnits = CONFIG.maxHealthUnits;
+    this.invulnerabilityTimer = 0;
     this.slowTimer = 0;
-    this.teaCount = 0;
+    this.cartRideTimer = 0;
+    this.cupCount = 0;
+    this.teapotCount = 0;
     this.player.reset();
     this.obstacles.reset();
-    this.teaManager.reset();
+    this.beverages.reset();
+    this.carts.reset();
   }
 
   togglePause() {
@@ -1782,7 +1569,7 @@ class Game {
     const result = {
       name: this.playerName,
       score: Number(this.score || 0),
-      tea: Number(this.teaCount || 0),
+      tea: Number(this.cupCount + this.teapotCount * 2 || 0),
       date: new Date().toISOString(),
     };
 
@@ -1791,31 +1578,63 @@ class Game {
 
     if (this.firebaseReady && this.leaderboardRef) {
       const entryKey = leaderboardNameKey(this.playerName);
-      this.leaderboardRef.child(entryKey).transaction((current) => {
-        const currentScore = Number(current && current.score || 0);
-        if (!current || result.score > currentScore) {
-          return result;
-        }
-        return current;
-      }).catch(() => {
-        this.setLeaderboardStatus("Результат сохранён локально, но не отправился онлайн");
-        this.leaderboardRows = localRows.slice(0, 10);
-        this.updateLeaderboardUI();
-      });
+      this.leaderboardRef
+        .child(entryKey)
+        .transaction((current) => {
+          const currentScore = Number((current && current.score) || 0);
+          if (!current || result.score > currentScore) {
+            return result;
+          }
+          return current;
+        })
+        .catch(() => {
+          this.setLeaderboardStatus("Результат сохранён локально, но не отправился онлайн");
+          this.leaderboardRows = localRows.slice(0, 10);
+          this.updateLeaderboardUI();
+        });
     } else {
       this.leaderboardRows = localRows.slice(0, 10);
       this.updateLeaderboardUI();
     }
   }
 
-  collectTea(index) {
-    this.teaManager.items.splice(index, 1);
-    this.teaCount += 1;
-    this.workProgress = Math.max(0, this.workProgress - CONFIG.teaTimeRewind);
-    const minTeaSpeed = CONFIG.baseSpeed * CONFIG.teaMinSpeedFactor;
-    this.speed = Math.max(minTeaSpeed, this.speed - CONFIG.teaSlowdownAmount);
-    this.slowTimer = Math.max(this.slowTimer, CONFIG.teaSlowdownDuration);
+  collectBeverage(index) {
+    const item = this.beverages.items[index];
+    if (!item) return;
+    this.beverages.items.splice(index, 1);
+    if (item.kind === "teapot") {
+      this.teapotCount += 1;
+      this.healthUnits = Math.min(CONFIG.maxHealthUnits, this.healthUnits + CONFIG.teapot.healUnits);
+      this.speed = Math.max(CONFIG.baseSpeed * CONFIG.teapot.minSpeedFactor, this.speed - CONFIG.teapot.slowdownAmount);
+      this.slowTimer = Math.max(this.slowTimer, CONFIG.teapot.slowDuration);
+    } else {
+      this.cupCount += 1;
+      this.healthUnits = Math.min(CONFIG.maxHealthUnits, this.healthUnits + CONFIG.cup.healUnits);
+      this.speed = Math.max(CONFIG.baseSpeed * CONFIG.cup.minSpeedFactor, this.speed - CONFIG.cup.slowdownAmount);
+      this.slowTimer = Math.max(this.slowTimer, CONFIG.cup.slowDuration);
+    }
     this.audio.tea();
+  }
+
+  takeDamage() {
+    if (this.isInvulnerable()) return;
+    this.healthUnits = Math.max(0, this.healthUnits - CONFIG.damageUnits);
+    this.invulnerabilityTimer = CONFIG.invulnerabilityDuration;
+    this.hitFlash = 0.75;
+    this.shake = 10;
+    this.audio.hit();
+    if (this.healthUnits <= 0) {
+      this.gameOver();
+    }
+  }
+
+  activateCartRide(index) {
+    this.carts.items.splice(index, 1);
+    this.cartRideTimer = CONFIG.cartRideDuration;
+    this.player.vy = 0;
+    this.player.grounded = true;
+    this.player.ducking = false;
+    this.audio.powerup();
   }
 
   loop(now) {
@@ -1825,24 +1644,23 @@ class Game {
 
     if (this.state === "running") this.update(dt);
     this.render();
-
     requestAnimationFrame(this.loop.bind(this));
   }
 
   update(dt) {
     this.time += dt;
-    this.workProgress += dt;
-    if (this.workProgress >= CONFIG.workdayDuration) {
-      this.workProgress = CONFIG.workdayDuration;
-      this.finishDay();
-      return;
-    }
+    this.invulnerabilityTimer = Math.max(0, this.invulnerabilityTimer - dt);
 
     if (this.slowTimer > 0) {
-      this.slowTimer -= dt;
-      this.speed += CONFIG.speedGrowth * 0.25 * dt;
+      this.slowTimer = Math.max(0, this.slowTimer - dt);
+      this.speed += CONFIG.speedGrowth * 0.22 * dt;
     } else {
       this.speed += CONFIG.speedGrowth * dt;
+    }
+
+    if (this.cartRideTimer > 0) {
+      this.cartRideTimer = Math.max(0, this.cartRideTimer - dt);
+      this.speed = Math.max(this.speed, CONFIG.baseSpeed * 1.08);
     }
 
     this.distance += this.speed * dt;
@@ -1856,18 +1674,30 @@ class Game {
     this.background.update(dt);
     this.player.update(dt);
     this.obstacles.update(dt);
-    this.teaManager.update(dt);
+    this.beverages.update(dt);
+    this.carts.update(dt);
 
-    for (const obs of this.obstacles.items) {
-      if (this.intersects(this.player.getBounds(), obs.getBounds())) {
-        this.gameOver();
-        return;
+    for (let i = this.beverages.items.length - 1; i >= 0; i--) {
+      if (this.intersects(this.player.getBounds(), this.beverages.items[i].getBounds())) {
+        this.collectBeverage(i);
       }
     }
 
-    for (let i = this.teaManager.items.length - 1; i >= 0; i--) {
-      if (this.intersects(this.player.getBounds(), this.teaManager.items[i].getBounds())) {
-        this.collectTea(i);
+    if (!this.isRidingCart()) {
+      for (let i = this.carts.items.length - 1; i >= 0; i--) {
+        if (this.intersects(this.player.getBounds(), this.carts.items[i].getBounds())) {
+          this.activateCartRide(i);
+          break;
+        }
+      }
+    }
+
+    if (!this.isRidingCart()) {
+      for (const obs of this.obstacles.items) {
+        if (this.intersects(this.player.getBounds(), obs.getBounds())) {
+          this.takeDamage();
+          break;
+        }
       }
     }
 
@@ -1882,6 +1712,8 @@ class Game {
   render() {
     const ctx = this.ctx;
     ctx.save();
+    ctx.clearRect(0, 0, this.worldWidth, this.worldHeight);
+    ctx.setLineDash([]);
 
     if (this.shake > 0) {
       const magnitude = this.shake * 0.35;
@@ -1889,9 +1721,20 @@ class Game {
     }
 
     this.background.draw(ctx);
-    this.teaManager.draw(ctx);
+    this.beverages.draw(ctx);
     this.obstacles.draw(ctx);
-    this.player.draw(ctx);
+    this.carts.draw(ctx);
+    if (this.isRidingCart()) {
+      drawCartIllustration(ctx, this.player.x - 2, this.groundY - 56, 98, 58);
+    }
+    if (this.invulnerabilityTimer > 0 && !this.isRidingCart()) {
+      ctx.save();
+      ctx.globalAlpha = 0.55 + Math.sin(this.time * 32) * 0.25;
+      this.player.draw(ctx);
+      ctx.restore();
+    } else {
+      this.player.draw(ctx);
+    }
 
     if (this.hitFlash > 0) {
       ctx.fillStyle = `rgba(255,80,80,${this.hitFlash * 0.25})`;
@@ -1905,56 +1748,87 @@ class Game {
 
   drawHUD(ctx) {
     ctx.save();
-    const panelW = 458;
-    const panelH = 112;
-    const panelX = 14;
+    const panelW = 390;
+    const panelH = this.isRidingCart() ? 108 : 88;
+    const panelX = 16;
     const panelY = 12;
 
-    ctx.fillStyle = "rgba(255,255,255,0.88)";
+    ctx.fillStyle = "rgba(255,255,255,0.86)";
     roundedRectPath(ctx, panelX, panelY, panelW, panelH, 14);
     ctx.fill();
 
     ctx.fillStyle = "#213a58";
-    ctx.font = "700 21px Inter, sans-serif";
-    ctx.fillText(`Счёт: ${this.score}`, panelX + 14, panelY + 28);
-
-    ctx.font = "600 15px Inter, sans-serif";
-    ctx.fillStyle = "#446387";
-    ctx.fillText(`Рекорд: ${this.best}`, panelX + 14, panelY + 50);
-    ctx.fillText(`Чай: ${this.teaCount}`, panelX + 120, panelY + 50);
-    ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, panelX + 194, panelY + 50);
-
-    ctx.fillStyle = "#1e4269";
-    ctx.font = "700 16px Inter, sans-serif";
-    ctx.fillText("Рабочий день", panelX + 14, panelY + 74);
-
     ctx.font = "800 20px Inter, sans-serif";
-    ctx.fillText(formatWorkTime(this.workProgress / CONFIG.workdayDuration), panelX + 136, panelY + 74);
+    ctx.fillText(`Счёт: ${this.score}`, panelX + 14, panelY + 26);
 
-    const barX = panelX + 14;
-    const barY = panelY + 84;
-    const barW = panelW - 28;
-    const barH = 12;
+    ctx.font = "600 14px Inter, sans-serif";
+    ctx.fillStyle = "#446387";
+    ctx.fillText(`Рекорд: ${this.best}`, panelX + 14, panelY + 47);
+    ctx.fillText(`Кружки: ${this.cupCount}`, panelX + 122, panelY + 47);
+    ctx.fillText(`Чайники: ${this.teapotCount}`, panelX + 228, panelY + 47);
 
-    ctx.fillStyle = "rgba(120, 152, 193, 0.22)";
-    roundedRectPath(ctx, barX, barY, barW, barH, 8);
-    ctx.fill();
+    this.drawHearts(ctx, panelX + 14, panelY + 61);
 
-    ctx.fillStyle = this.slowTimer > 0 ? "#67b7ff" : "#3f78c4";
-    roundedRectPath(ctx, barX, barY, barW * clamp(this.workProgress / CONFIG.workdayDuration, 0, 1), barH, 8);
-    ctx.fill();
+    ctx.fillStyle = "#446387";
+    ctx.font = "600 14px Inter, sans-serif";
+    ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, panelX + 150, panelY + 78);
+
+    if (this.isRidingCart()) {
+      ctx.fillStyle = "#23725d";
+      ctx.fillText(`Тележка: ${this.cartRideTimer.toFixed(1)}с`, panelX + 272, panelY + 78);
+    }
 
     ctx.restore();
   }
 
+  drawHearts(ctx, x, y) {
+    for (let i = 0; i < 3; i++) {
+      const units = clamp(this.healthUnits - i * 2, 0, 2);
+      this.drawHeart(ctx, x + i * 38, y, units);
+    }
+  }
+
+  drawHeart(ctx, x, y, units) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    ctx.fillStyle = "rgba(120, 152, 193, 0.22)";
+    this.heartPath(ctx, 0, 0, 14);
+    ctx.fill();
+
+    if (units > 0) {
+      ctx.save();
+      this.heartPath(ctx, 0, 0, 14);
+      ctx.clip();
+      ctx.fillStyle = units >= 2 ? "#e74359" : "#ff8a9b";
+      const fillW = units >= 2 ? 32 : 16;
+      ctx.fillRect(-16, -15, fillW, 31);
+      ctx.restore();
+    }
+
+    ctx.strokeStyle = "rgba(91, 45, 60, 0.45)";
+    ctx.lineWidth = 1.5;
+    this.heartPath(ctx, 0, 0, 14);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  heartPath(ctx, x, y, size) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + size * 0.72);
+    ctx.bezierCurveTo(x - size * 1.35, y - size * 0.1, x - size * 0.72, y - size * 1.05, x, y - size * 0.45);
+    ctx.bezierCurveTo(x + size * 0.72, y - size * 1.05, x + size * 1.35, y - size * 0.1, x, y + size * 0.72);
+    ctx.closePath();
+  }
+
   drawStateMessage(ctx) {
-    const pulse = 0.56 + Math.sin(this.time * 2.8) * 0.14;
+    const pulse = 0.58 + Math.sin(this.time * 2.8) * 0.14;
 
     if (this.state === "ready") {
       this.drawOverlayText(
         ctx,
         "Нажми пробел или тапни",
-        "Прыгай через заказчиков и стопки бумаги. Скользи под летящими листами. Чай продлевает рабочий день.",
+        "У тебя 3 сердца. Кружка восстанавливает половину сердца, чайник — целое сердце, тележка даёт 4 секунды защиты.",
         pulse
       );
     }
@@ -1967,9 +1841,6 @@ class Game {
       this.drawOverlayText(ctx, "Столкновение", "Enter / Space / клик / тап — рестарт", 0.96, true);
     }
 
-    if (this.state === "win") {
-      this.drawOverlayText(ctx, "Рабочий день завершён", "17:30! Enter / Space / клик / тап — сыграть ещё", 0.96, false, true);
-    }
   }
 
   wrapText(ctx, text, maxWidth) {
@@ -1992,11 +1863,11 @@ class Game {
   drawOverlayText(ctx, title, subtitle, alpha, danger = false, success = false) {
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = "rgba(15, 35, 60, 0.66)";
+    ctx.fillStyle = "rgba(15, 35, 60, 0.58)";
     ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
 
-    const boxW = 700;
-    const boxH = 156;
+    const boxW = 720;
+    const boxH = 154;
     const boxX = this.worldWidth / 2 - boxW / 2;
     const boxY = this.worldHeight / 2 - boxH / 2;
 
@@ -2008,13 +1879,13 @@ class Game {
     ctx.fillStyle = danger ? "#d62828" : success ? "#1f8d5a" : "#194776";
     ctx.font = "800 28px Inter, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(title, this.worldWidth / 2, boxY + 48);
+    ctx.fillText(title, this.worldWidth / 2, boxY + 46);
 
     ctx.fillStyle = "#365a80";
     ctx.font = "600 17px Inter, sans-serif";
     const lines = this.wrapText(ctx, subtitle, boxW - 70).slice(0, 3);
     lines.forEach((line, index) => {
-      ctx.fillText(line, this.worldWidth / 2, boxY + 84 + index * 24);
+      ctx.fillText(line, this.worldWidth / 2, boxY + 82 + index * 24);
     });
 
     ctx.textAlign = "start";
@@ -2024,5 +1895,6 @@ class Game {
 
 (function init() {
   const canvas = document.getElementById("gameCanvas");
-  new Game(canvas, null);
+  if (!canvas) return;
+  new Game(canvas);
 })();
