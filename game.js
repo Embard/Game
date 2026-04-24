@@ -27,16 +27,28 @@ const CONFIG = {
 
 const STORAGE_KEY = "gip-runner-best";
 
-const RUN_CYCLE = [
-  { t: 0.0, thigh: 24, shin: 8, foot: -8, upperArm: -28, foreArm: -8 },
-  { t: 0.125, thigh: 12, shin: -2, foot: -2, upperArm: -18, foreArm: -2 },
-  { t: 0.25, thigh: -4, shin: -20, foot: 8, upperArm: 2, foreArm: 16 },
-  { t: 0.375, thigh: -18, shin: -42, foot: 18, upperArm: 18, foreArm: 28 },
-  { t: 0.5, thigh: -30, shin: -16, foot: 10, upperArm: 30, foreArm: 18 },
-  { t: 0.625, thigh: -14, shin: 8, foot: 2, upperArm: 14, foreArm: 4 },
-  { t: 0.75, thigh: 6, shin: 28, foot: -12, upperArm: -2, foreArm: -8 },
-  { t: 0.875, thigh: 22, shin: 12, foot: -14, upperArm: -24, foreArm: -10 },
-  { t: 1.0, thigh: 24, shin: 8, foot: -8, upperArm: -28, foreArm: -8 },
+const RUN_LEG_CYCLE = [
+  { t: 0.0, x: 22, y: 0, foot: -4 },
+  { t: 0.125, x: 14, y: 0, foot: -1 },
+  { t: 0.25, x: 4, y: -1, foot: 4 },
+  { t: 0.375, x: -8, y: -2, foot: 14 },
+  { t: 0.5, x: -20, y: -6, foot: 26 },
+  { t: 0.625, x: -12, y: -22, foot: 18 },
+  { t: 0.75, x: 4, y: -30, foot: 6 },
+  { t: 0.875, x: 18, y: -16, foot: -3 },
+  { t: 1.0, x: 22, y: 0, foot: -4 },
+];
+
+const RUN_ARM_CYCLE = [
+  { t: 0.0, upper: 28, fore: 56 },
+  { t: 0.125, upper: 16, fore: 40 },
+  { t: 0.25, upper: 4, fore: 24 },
+  { t: 0.375, upper: -10, fore: 6 },
+  { t: 0.5, upper: -26, fore: -8 },
+  { t: 0.625, upper: -14, fore: 10 },
+  { t: 0.75, upper: 0, fore: 24 },
+  { t: 0.875, upper: 18, fore: 46 },
+  { t: 1.0, upper: 28, fore: 56 },
 ];
 
 function clamp(value, min, max) {
@@ -53,23 +65,31 @@ function wrap01(value) {
   return v;
 }
 
-function sampleCycle(frames, phase) {
+function sampleFrame(frames, phase) {
   const p = wrap01(phase);
   for (let i = 0; i < frames.length - 1; i++) {
     const a = frames[i];
     const b = frames[i + 1];
     if (p >= a.t && p <= b.t) {
-      const localT = (p - a.t) / Math.max(0.0001, b.t - a.t);
-      return {
-        thigh: lerp(a.thigh, b.thigh, localT),
-        shin: lerp(a.shin, b.shin, localT),
-        foot: lerp(a.foot, b.foot, localT),
-        upperArm: lerp(a.upperArm, b.upperArm, localT),
-        foreArm: lerp(a.foreArm, b.foreArm, localT),
-      };
+      const rawT = (p - a.t) / Math.max(0.0001, b.t - a.t);
+      const localT = rawT * rawT * (3 - 2 * rawT);
+      const result = {};
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      for (const key of keys) {
+        if (key === "t") continue;
+        const av = typeof a[key] === "number" ? a[key] : 0;
+        const bv = typeof b[key] === "number" ? b[key] : av;
+        result[key] = lerp(av, bv, localT);
+      }
+      return result;
     }
   }
-  return { ...frames[0] };
+
+  const fallback = {};
+  for (const key of Object.keys(frames[0])) {
+    if (key !== "t") fallback[key] = frames[0][key];
+  }
+  return fallback;
 }
 
 function degToRad(deg) {
@@ -309,9 +329,9 @@ class Player {
     this.usePhoto = !!(portraitTexture && portraitTexture.ready);
 
     this.x = 160;
-    this.width = 82;
-    this.standHeight = 122;
-    this.duckHeight = 72;
+    this.width = 86;
+    this.standHeight = 126;
+    this.duckHeight = 80;
 
     this.height = this.standHeight;
     this.y = this.game.groundY - this.height;
@@ -321,6 +341,7 @@ class Player {
     this.runTime = 0;
     this.squash = 0;
     this.lastGrounded = true;
+    this.landingDust = 0;
   }
 
   reset() {
@@ -332,12 +353,15 @@ class Player {
     this.runTime = 0;
     this.squash = 0;
     this.lastGrounded = true;
+    this.landingDust = 0;
   }
 
   jump() {
     if (!this.grounded) return;
     this.vy = -CONFIG.jumpForce;
     this.grounded = false;
+    this.ducking = false;
+    this.height = this.standHeight;
     this.game.audio.jump();
   }
 
@@ -365,6 +389,7 @@ class Player {
     if (this.y >= floor) {
       if (!this.lastGrounded) {
         this.squash = 1;
+        this.landingDust = 1;
       }
       this.y = floor;
       this.vy = 0;
@@ -376,23 +401,24 @@ class Player {
     }
 
     this.lastGrounded = this.grounded;
-    this.squash = Math.max(0, this.squash - dt * 6);
+    this.squash = Math.max(0, this.squash - dt * 7);
+    this.landingDust = Math.max(0, this.landingDust - dt * 4);
   }
 
   getBounds() {
     if (this.ducking && this.grounded) {
       return {
-        x: this.x + 16,
-        y: this.y + 16,
-        width: this.width - 28,
-        height: this.height - 18,
+        x: this.x + 17,
+        y: this.y + 22,
+        width: this.width - 32,
+        height: this.height - 22,
       };
     }
 
     return {
-      x: this.x + 14,
+      x: this.x + 15,
       y: this.y + 10,
-      width: this.width - 26,
+      width: this.width - 30,
       height: this.height - 12,
     };
   }
@@ -400,110 +426,154 @@ class Player {
   draw(ctx) {
     ctx.save();
 
-    const bob = this.grounded ? Math.sin(this.runTime * 12) * 1.1 : 0;
-    const jumpTilt = this.grounded ? 0 : clamp(this.vy / 2300, -0.12, 0.08);
-    const runLean = this.ducking ? -0.2 : -0.12;
-    const squashY = this.grounded ? 1 - this.squash * 0.1 : 1 + Math.min(0.06, Math.abs(this.vy) / 2600);
-    const squashX = this.grounded ? 1 + this.squash * 0.1 : 1 - Math.min(0.04, Math.abs(this.vy) / 2800);
+    const phase = wrap01(this.runTime * 1.52);
+    const bodyBob = this.grounded && !this.ducking ? Math.sin(phase * Math.PI * 2) * 1.6 : 0;
+    const jumpTilt = this.grounded ? 0 : clamp(this.vy / 2600, -0.12, 0.08);
+    const lean = this.ducking ? -0.32 : -0.16;
+    const squashY = this.grounded ? 1 - this.squash * 0.08 : 1 + Math.min(0.055, Math.abs(this.vy) / 2800);
+    const squashX = this.grounded ? 1 + this.squash * 0.08 : 1 - Math.min(0.035, Math.abs(this.vy) / 3000);
 
-    ctx.translate(this.x + this.width / 2, this.y + this.height / 2 + bob);
-    ctx.rotate(runLean + jumpTilt);
+    ctx.translate(this.x + this.width / 2, this.y + this.height / 2 + bodyBob);
+    ctx.rotate(lean + jumpTilt);
     ctx.scale(squashX, squashY);
 
-    this.drawFigure(ctx);
+    this.drawGroundShadow(ctx);
+    this.drawFigure(ctx, phase);
+    this.drawLandingDust(ctx);
+
     ctx.restore();
   }
 
-  getLegPose(phase) {
-    if (this.ducking && this.grounded) {
-      return { thigh: 35, shin: 82, foot: 8 };
-    }
-
-    if (!this.grounded) {
-      if (this.vy < -40) {
-        return phase < 0.5
-          ? { thigh: 22, shin: 42, foot: -16 }
-          : { thigh: -30, shin: -12, foot: 14 };
-      }
-      return phase < 0.5
-        ? { thigh: 12, shin: 8, foot: -2 }
-        : { thigh: -12, shin: -4, foot: 6 };
-    }
-
-    return sampleCycle(RUN_CYCLE, phase);
+  drawGroundShadow(ctx) {
+    const alpha = this.grounded ? 0.18 : clamp(0.14 - Math.abs(this.vy) / 9000, 0.05, 0.14);
+    ctx.save();
+    ctx.fillStyle = `rgba(35, 64, 92, ${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(0, this.height / 2 - 3, this.ducking ? 30 : 34, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
-  getArmPose(phase) {
-    if (this.ducking && this.grounded) {
-      return { upperArm: 38, foreArm: 68 };
-    }
+  drawLandingDust(ctx) {
+    if (this.landingDust <= 0) return;
 
-    if (!this.grounded) {
-      return phase < 0.5
-        ? { upperArm: -12, foreArm: 18 }
-        : { upperArm: 22, foreArm: 46 };
-    }
-
-    return sampleCycle(RUN_CYCLE, phase);
+    ctx.save();
+    ctx.globalAlpha = this.landingDust * 0.35;
+    ctx.fillStyle = "#ffffff";
+    const y = this.height / 2 - 8;
+    ctx.beginPath();
+    ctx.ellipse(-18 - (1 - this.landingDust) * 12, y, 9, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(18 + (1 - this.landingDust) * 12, y + 1, 8, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
-  computeLeg(hipX, hipY, pose) {
-    const thighLen = 26;
-    const shinLen = 28;
-    const footLen = 14;
+  sampleLegPose(phase) {
+    return sampleFrame(RUN_LEG_CYCLE, phase);
+  }
 
-    const thighTheta = degToRad(90 - pose.thigh);
-    const kneeX = hipX + Math.cos(thighTheta) * thighLen;
-    const kneeY = hipY + Math.sin(thighTheta) * thighLen;
+  sampleArmPose(phase) {
+    return sampleFrame(RUN_ARM_CYCLE, phase);
+  }
 
-    const shinTheta = degToRad(90 - pose.shin);
-    const ankleX = kneeX + Math.cos(shinTheta) * shinLen;
-    const ankleY = kneeY + Math.sin(shinTheta) * shinLen;
+  solveLegIK(hipX, hipY, ankleX, ankleY, footAngleDeg, bendSign = -1) {
+    const thighLen = 29;
+    const shinLen = 30;
+    const dx = ankleX - hipX;
+    const dy = ankleY - hipY;
+    const distanceRaw = Math.max(0.001, Math.hypot(dx, dy));
+    const distance = Math.min(distanceRaw, thighLen + shinLen - 0.001);
+    const dirX = dx / distanceRaw;
+    const dirY = dy / distanceRaw;
 
-    const footTheta = degToRad(-pose.foot);
+    const a = (thighLen * thighLen - shinLen * shinLen + distance * distance) / (2 * distance);
+    const height = Math.sqrt(Math.max(0, thighLen * thighLen - a * a));
+
+    const baseX = hipX + dirX * a;
+    const baseY = hipY + dirY * a;
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    const kneeX = baseX + perpX * height * bendSign;
+    const kneeY = baseY + perpY * height * bendSign;
+
+    const footLen = 16;
+    const footTheta = degToRad(-footAngleDeg);
     const toeX = ankleX + Math.cos(footTheta) * footLen;
     const toeY = ankleY + Math.sin(footTheta) * footLen;
+    const heelX = ankleX - Math.cos(footTheta) * 5;
+    const heelY = ankleY - Math.sin(footTheta) * 5;
 
-    return { hipX, hipY, kneeX, kneeY, ankleX, ankleY, toeX, toeY };
+    return { hipX, hipY, kneeX, kneeY, ankleX, ankleY, toeX, toeY, heelX, heelY };
   }
 
-  computeArm(shoulderX, shoulderY, pose) {
-    const upperLen = 20;
-    const foreLen = 17;
+  solveArm(shoulderX, shoulderY, upperDeg, foreDeg) {
+    const upperLen = 21;
+    const foreLen = 18;
 
-    const upperTheta = degToRad(90 - pose.upperArm);
+    const upperTheta = degToRad(90 - upperDeg);
     const elbowX = shoulderX + Math.cos(upperTheta) * upperLen;
     const elbowY = shoulderY + Math.sin(upperTheta) * upperLen;
 
-    const foreTheta = degToRad(90 - pose.foreArm);
+    const foreTheta = degToRad(90 - foreDeg);
     const handX = elbowX + Math.cos(foreTheta) * foreLen;
     const handY = elbowY + Math.sin(foreTheta) * foreLen;
 
     return { shoulderX, shoulderY, elbowX, elbowY, handX, handY };
   }
 
-  drawFigure(ctx) {
-    const w = this.width;
+  drawFigure(ctx, phase) {
     const h = this.height;
-    const phase = wrap01(this.runTime * 1.65);
+    const floorY = h / 2 - 5;
+    const pelvisBob = this.grounded && !this.ducking ? Math.sin(phase * Math.PI * 2) * 2.3 : 0;
 
-    const torsoTop = -h * 0.16 + (this.ducking ? 10 : 0);
-    const torsoHeight = this.ducking ? 34 : 50;
+    const torsoTop = this.ducking ? -2 : -33 + pelvisBob * 0.2;
+    const torsoHeight = this.ducking ? 38 : 56;
     const torsoBottom = torsoTop + torsoHeight;
     const shoulderY = torsoTop + 10;
     const hipY = torsoBottom - 2;
 
-    const leftHipX = -w * 0.1;
-    const rightHipX = w * 0.06;
-    const leftShoulderX = -w * 0.18;
-    const rightShoulderX = w * 0.18;
+    const leftHipX = -10;
+    const rightHipX = 10;
+    const leftShoulderX = -17;
+    const rightShoulderX = 17;
 
-    const leftLeg = this.computeLeg(leftHipX, hipY, this.getLegPose(phase));
-    const rightLeg = this.computeLeg(rightHipX, hipY, this.getLegPose(phase + 0.5));
-    const leftArm = this.computeArm(leftShoulderX, shoulderY, this.getArmPose(phase + 0.5));
-    const rightArm = this.computeArm(rightShoulderX, shoulderY, this.getArmPose(phase));
+    let leftLeg;
+    let rightLeg;
+    let leftArm;
+    let rightArm;
 
-    const legs = [leftLeg, rightLeg].sort((a, b) => a.toeX - b.toeX);
+    if (this.ducking && this.grounded) {
+      const duckHipY = hipY + 13;
+      leftLeg = this.solveLegIK(leftHipX - 1, duckHipY, -21, floorY, 1, -1);
+      rightLeg = this.solveLegIK(rightHipX + 1, duckHipY + 1, 23, floorY, 2, -1);
+      leftArm = this.solveArm(leftShoulderX, shoulderY + 12, 22, 54);
+      rightArm = this.solveArm(rightShoulderX, shoulderY + 11, 42, 74);
+    } else if (!this.grounded) {
+      if (this.vy < 0) {
+        leftLeg = this.solveLegIK(leftHipX, hipY, 12, floorY - 28, -8, -1);
+        rightLeg = this.solveLegIK(rightHipX, hipY, -22, floorY - 8, 18, -1);
+        leftArm = this.solveArm(leftShoulderX, shoulderY, 18, 38);
+        rightArm = this.solveArm(rightShoulderX, shoulderY, -18, 8);
+      } else {
+        leftLeg = this.solveLegIK(leftHipX, hipY, 20, floorY - 8, -4, -1);
+        rightLeg = this.solveLegIK(rightHipX, hipY, -8, floorY - 20, 18, -1);
+        leftArm = this.solveArm(leftShoulderX, shoulderY, 10, 28);
+        rightArm = this.solveArm(rightShoulderX, shoulderY, -12, 8);
+      }
+    } else {
+      const leftFoot = this.sampleLegPose(phase);
+      const rightFoot = this.sampleLegPose(phase + 0.5);
+      const leftArmPose = this.sampleArmPose(phase + 0.5);
+      const rightArmPose = this.sampleArmPose(phase);
+
+      leftLeg = this.solveLegIK(leftHipX, hipY, leftFoot.x, floorY + leftFoot.y, leftFoot.foot, -1);
+      rightLeg = this.solveLegIK(rightHipX, hipY, rightFoot.x, floorY + rightFoot.y, rightFoot.foot, -1);
+      leftArm = this.solveArm(leftShoulderX, shoulderY, leftArmPose.upper, leftArmPose.fore);
+      rightArm = this.solveArm(rightShoulderX, shoulderY, rightArmPose.upper, rightArmPose.fore);
+    }
+
+    const legs = [leftLeg, rightLeg].sort((a, b) => a.ankleX - b.ankleX);
     const arms = [leftArm, rightArm].sort((a, b) => a.handX - b.handX);
 
     this.drawArmLimb(ctx, arms[0], true);
@@ -511,7 +581,7 @@ class Player {
     this.drawTorso(ctx, torsoTop, torsoHeight);
     this.drawLegLimb(ctx, legs[1], false);
     this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 0, -h * 0.34 + (this.ducking ? 8 : 0));
+    this.drawHead(ctx, 0, this.ducking ? -16 : -37 + pelvisBob * 0.3);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
@@ -519,19 +589,19 @@ class Player {
     const torsoBottom = torsoTop + torsoHeight;
 
     ctx.save();
-    roundedRectPath(ctx, -w * 0.22, torsoTop, w * 0.44, torsoHeight, 14);
+    roundedRectPath(ctx, -w * 0.2, torsoTop, w * 0.4, torsoHeight, 14);
     ctx.clip();
 
     const shirt = ctx.createLinearGradient(0, torsoTop, 0, torsoBottom);
     shirt.addColorStop(0, "#204f82");
     shirt.addColorStop(1, "#143b61");
     ctx.fillStyle = shirt;
-    ctx.fillRect(-w * 0.3, torsoTop - 2, w * 0.6, torsoHeight + 4);
+    ctx.fillRect(-w * 0.26, torsoTop - 2, w * 0.52, torsoHeight + 4);
 
     ctx.globalAlpha = 0.35;
     ctx.strokeStyle = "#4f79a8";
-    ctx.lineWidth = 1.1;
-    for (let x = -w * 0.3; x <= w * 0.3; x += 5) {
+    ctx.lineWidth = 1.05;
+    for (let x = -w * 0.26; x <= w * 0.26; x += 5) {
       ctx.beginPath();
       ctx.moveTo(x, torsoTop - 2);
       ctx.lineTo(x, torsoBottom + 2);
@@ -539,19 +609,19 @@ class Player {
     }
     for (let y = torsoTop - 2; y <= torsoBottom + 2; y += 5) {
       ctx.beginPath();
-      ctx.moveTo(-w * 0.3, y);
-      ctx.lineTo(w * 0.3, y);
+      ctx.moveTo(-w * 0.26, y);
+      ctx.lineTo(w * 0.26, y);
       ctx.stroke();
     }
     ctx.restore();
 
     ctx.fillStyle = "#15385f";
-    roundedRectPath(ctx, -w * 0.17, torsoBottom - 5, w * 0.34, 11, 6);
+    roundedRectPath(ctx, -w * 0.15, torsoBottom - 5, w * 0.3, 11, 6);
     ctx.fill();
   }
 
   drawLegLimb(ctx, limb, back) {
-    ctx.strokeStyle = back ? "#214f7c" : "#1a4a75";
+    ctx.strokeStyle = back ? "#234f7b" : "#1a4a75";
     ctx.lineWidth = back ? 7 : 8;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -564,15 +634,20 @@ class Player {
 
     ctx.fillStyle = back ? "#244d77" : "#173f65";
     ctx.beginPath();
-    ctx.arc(limb.kneeX, limb.kneeY, back ? 2.6 : 3.2, 0, Math.PI * 2);
+    ctx.arc(limb.kneeX, limb.kneeY, back ? 2.5 : 3.1, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = "#163a5d";
+    ctx.strokeStyle = "#153a5f";
     ctx.lineWidth = back ? 5 : 6;
     ctx.beginPath();
-    ctx.moveTo(limb.ankleX, limb.ankleY);
+    ctx.moveTo(limb.heelX, limb.heelY);
     ctx.lineTo(limb.toeX, limb.toeY);
     ctx.stroke();
+
+    ctx.fillStyle = "#153a5f";
+    ctx.beginPath();
+    ctx.arc(limb.toeX, limb.toeY, back ? 1.6 : 2.0, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   drawArmLimb(ctx, limb, back) {
@@ -585,18 +660,18 @@ class Player {
     ctx.lineTo(limb.elbowX, limb.elbowY);
     ctx.lineTo(limb.handX, limb.handY);
     ctx.stroke();
+
+    ctx.fillStyle = back ? "#2c679f" : "#1c5a91";
+    ctx.beginPath();
+    ctx.arc(limb.handX, limb.handY, back ? 2.2 : 2.6, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   drawHead(ctx, cx, cy) {
-    const headRadius = 28;
-
-    ctx.fillStyle = "rgba(0,0,0,0.12)";
-    ctx.beginPath();
-    ctx.ellipse(cx + 2, cy + headRadius + 17, 18, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const headRadius = 24;
 
     ctx.fillStyle = "#d6a787";
-    roundedRectPath(ctx, cx - 7, cy + headRadius - 4, 14, 15, 5);
+    roundedRectPath(ctx, cx - 6, cy + headRadius - 2, 12, 13, 5);
     ctx.fill();
 
     if (this.usePhoto) {
@@ -618,7 +693,7 @@ class Player {
     ctx.restore();
 
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.arc(cx, cy, headRadius - 1, 0, Math.PI * 2);
     ctx.stroke();
@@ -636,18 +711,18 @@ class Player {
 
     ctx.fillStyle = "#4e3a2f";
     ctx.beginPath();
-    ctx.arc(cx - 8, cy - 3, 2.5, 0, Math.PI * 2);
-    ctx.arc(cx + 8, cy - 3, 2.5, 0, Math.PI * 2);
+    ctx.arc(cx - 7, cy - 3, 2.2, 0, Math.PI * 2);
+    ctx.arc(cx + 7, cy - 3, 2.2, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = "#5a3f30";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(cx, cy + 6, 8, 0, Math.PI);
+    ctx.arc(cx, cy + 5, 7, 0, Math.PI);
     ctx.stroke();
 
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
     ctx.arc(cx, cy, headRadius - 1, 0, Math.PI * 2);
     ctx.stroke();
