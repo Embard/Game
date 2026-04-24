@@ -89,6 +89,17 @@ function roundedRectPath(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+function drawContainedImage(ctx, image, x, y, width, height) {
+  if (!image || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) return false;
+  const scale = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+  const drawW = image.naturalWidth * scale;
+  const drawH = image.naturalHeight * scale;
+  const drawX = x + (width - drawW) * 0.5;
+  const drawY = y + (height - drawH) * 0.5;
+  ctx.drawImage(image, drawX, drawY, drawW, drawH);
+  return true;
+}
+
 function formatWorkTime(progress) {
   const start = 8 * 60;
   const end = 17 * 60 + 30;
@@ -464,17 +475,27 @@ class Player {
   getBounds() {
     if (this.ducking && this.grounded) {
       return {
-        x: this.x + 14,
-        y: this.y + 20,
-        width: this.width - 28,
-        height: this.height - 24,
+        x: this.x + 18,
+        y: this.y + 22,
+        width: this.width - 36,
+        height: this.height - 28,
       };
     }
+
+    if (!this.grounded) {
+      return {
+        x: this.x + 22,
+        y: this.y + 16,
+        width: this.width - 44,
+        height: this.height - 28,
+      };
+    }
+
     return {
-      x: this.x + 18,
-      y: this.y + 12,
-      width: this.width - 34,
-      height: this.height - 16,
+      x: this.x + 22,
+      y: this.y + 14,
+      width: this.width - 44,
+      height: this.height - 22,
     };
   }
 
@@ -627,6 +648,26 @@ function loadPlayerSprites(characterId = CHARACTERS[0].id) {
   });
 }
 
+const GAME_ART_PATHS = {
+  cup: "assets/game/cup.png",
+  teapot: "assets/game/teapot.png",
+  cart: "assets/game/cart.png",
+};
+
+function createArtImage(path) {
+  const img = new Image();
+  img.decoding = "async";
+  img.src = path;
+  return img;
+}
+
+const GAME_ART = Object.fromEntries(Object.entries(GAME_ART_PATHS).map(([key, path]) => [key, createArtImage(path)]));
+
+function getGameArt(name) {
+  const image = GAME_ART[name];
+  return image && image.complete && image.naturalWidth > 0 ? image : null;
+}
+
 class Obstacle {
   constructor(game, type, x) {
     this.game = game;
@@ -636,6 +677,14 @@ class Obstacle {
     this.height = type.height;
     this.y = game.groundY - type.height + (type.offsetY || 0);
     this.phase = Math.random() * Math.PI * 2;
+    this.paperLabels = [];
+
+    if (type.kind === "paperPile" || type.kind === "paperStack") {
+      const count = type.kind === "paperStack" ? 5 : 4;
+      this.paperLabels = Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 50));
+    } else if (type.kind === "paperHigh") {
+      this.paperLabels = Array.from({ length: 2 }, () => 1 + Math.floor(Math.random() * 50));
+    }
   }
 
   update(dt) {
@@ -644,10 +693,10 @@ class Obstacle {
 
   getBounds() {
     return {
-      x: this.x + (this.type.hitInsetX || 4),
-      y: this.y + (this.type.hitInsetY || 4),
-      width: this.width - 2 * (this.type.hitInsetX || 4),
-      height: this.height - 2 * (this.type.hitInsetY || 4),
+      x: this.x + (this.type.hitInsetX || 6),
+      y: this.y + (this.type.hitInsetY || 6),
+      width: this.width - 2 * (this.type.hitInsetX || 6),
+      height: this.height - 2 * (this.type.hitInsetY || 6),
     };
   }
 
@@ -655,133 +704,91 @@ class Obstacle {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.setLineDash([]);
-    switch (this.type.kind) {
-      case "houseLow":
-        this.drawBuilding(ctx, 58, 48, 2, 2);
-        break;
-      case "houseTall":
-        this.drawBuilding(ctx, 72, 78, 3, 3);
-        break;
-      case "towerSlim":
-        this.drawTower(ctx);
-        break;
-      case "skybridge":
-        this.drawSkybridge(ctx);
-        break;
-      default:
-        this.drawBuilding(ctx, this.width, this.height, 2, 2);
-        break;
+
+    if (this.type.kind === "paperPile") {
+      this.drawPaperPile(ctx, 4, 0.98);
+    } else if (this.type.kind === "paperStack") {
+      this.drawPaperPile(ctx, 5, 1.06);
+    } else if (this.type.kind === "paperHigh") {
+      this.drawFlyingPapers(ctx, this.game.time);
     }
+
     ctx.restore();
   }
 
-  drawBuilding(ctx, width, height, cols, rows) {
-    ctx.fillStyle = "#586e83";
-    roundedRectPath(ctx, 0, 0, width, height, 8);
-    ctx.fill();
-
-    const wall = ctx.createLinearGradient(0, 0, 0, height);
-    wall.addColorStop(0, "#8b786d");
-    wall.addColorStop(1, "#665048");
-    ctx.fillStyle = wall;
-    roundedRectPath(ctx, 4, 4, width - 8, height - 8, 6);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  drawPaperRevision(ctx, x, y, number, scale = 1) {
+    const label = `Изм ${number}`;
+    const fontSize = Math.max(8, Math.round(8.6 * scale));
+    ctx.save();
+    ctx.font = `700 ${fontSize}px Arial`;
+    const width = Math.ceil(ctx.measureText(label).width) + 8;
+    const height = fontSize + 4;
+    ctx.fillStyle = "rgba(255, 245, 190, 0.98)";
+    ctx.strokeStyle = "#bf8500";
     ctx.lineWidth = 1;
-    for (let i = 8; i < width - 8; i += 12) {
-      ctx.beginPath();
-      ctx.moveTo(i, 4);
-      ctx.lineTo(i, height - 4);
-      ctx.stroke();
-    }
-    for (let i = 8; i < height - 8; i += 10) {
-      ctx.beginPath();
-      ctx.moveTo(4, i);
-      ctx.lineTo(width - 4, i);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = "#2a445c";
-    const paddingX = 10;
-    const paddingY = 12;
-    const gapX = 8;
-    const gapY = 8;
-    const winW = Math.max(10, Math.floor((width - paddingX * 2 - gapX * (cols - 1)) / cols));
-    const winH = Math.max(9, Math.floor((height - paddingY * 2 - gapY * (rows - 1)) / rows));
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const x = paddingX + col * (winW + gapX);
-        const y = paddingY + row * (winH + gapY);
-        roundedRectPath(ctx, x, y, winW, winH, 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(170, 212, 255, 0.5)";
-        roundedRectPath(ctx, x + 2, y + 2, winW - 4, winH - 4, 2);
-        ctx.fill();
-        ctx.fillStyle = "#2a445c";
-      }
-    }
-
-    ctx.fillStyle = "#506578";
-    roundedRectPath(ctx, -3, -5, width + 6, 10, 5);
+    roundedRectPath(ctx, x - 2, y - 1, width, height, 4);
     ctx.fill();
-    ctx.fillStyle = "#6b849a";
-    roundedRectPath(ctx, -3, height - 8, width + 6, 9, 5);
-    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#7a1f10";
+    ctx.textBaseline = "top";
+    ctx.fillText(label, x + 2, y + 1);
+    ctx.restore();
   }
 
-  drawTower(ctx) {
-    const width = this.width;
-    const height = this.height;
-    ctx.fillStyle = "#5a7084";
-    roundedRectPath(ctx, 8, 0, width - 16, height, 10);
-    ctx.fill();
-
-    const glass = ctx.createLinearGradient(0, 0, width, 0);
-    glass.addColorStop(0, "#334455");
-    glass.addColorStop(0.5, "#7db5da");
-    glass.addColorStop(1, "#334455");
-    ctx.fillStyle = glass;
-    roundedRectPath(ctx, 14, 8, width - 28, height - 16, 9);
-    ctx.fill();
-
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    for (let y = 14; y < height - 14; y += 16) {
-      ctx.fillRect(18, y, width - 36, 3);
+  drawPaperLines(ctx, x, y, width, height) {
+    ctx.fillStyle = "rgba(133, 167, 209, 0.58)";
+    for (let lineY = y + 8; lineY < y + height - 6; lineY += 6) {
+      ctx.fillRect(x + 6, lineY, width - 16, 1.2);
     }
-
-    ctx.fillStyle = "#6c849a";
-    roundedRectPath(ctx, 4, height - 8, width - 8, 10, 5);
-    ctx.fill();
   }
 
-  drawSkybridge(ctx) {
-    const width = this.width;
-    const height = this.height;
-    ctx.fillStyle = "#61768a";
-    roundedRectPath(ctx, 0, 0, width, height, 8);
-    ctx.fill();
-
-    const wall = ctx.createLinearGradient(0, 0, 0, height);
-    wall.addColorStop(0, "#8e7c70");
-    wall.addColorStop(1, "#6e584f");
-    ctx.fillStyle = wall;
-    roundedRectPath(ctx, 4, 4, width - 8, height - 8, 6);
-    ctx.fill();
-
-    ctx.fillStyle = "#33506a";
-    for (let x = 12; x < width - 12; x += 18) {
-      roundedRectPath(ctx, x, 11, 12, 12, 2);
+  drawPaperPile(ctx, pages = 4, scale = 1) {
+    const pageW = this.width - 12;
+    const pageH = this.height - 14;
+    for (let i = 0; i < pages; i++) {
+      const shiftX = i * 4;
+      const shiftY = -i * 2;
+      ctx.save();
+      ctx.translate(shiftX, shiftY);
+      ctx.rotate((-6 + i * 4) * Math.PI / 180);
+      ctx.fillStyle = i % 2 ? "#ffffff" : "#f6fbff";
+      ctx.strokeStyle = "#b8cbe0";
+      ctx.lineWidth = 1.4;
+      roundedRectPath(ctx, 0, 8, pageW, pageH, 4);
       ctx.fill();
-      ctx.fillStyle = "rgba(160, 210, 255, 0.45)";
-      roundedRectPath(ctx, x + 2, 13, 8, 8, 2);
-      ctx.fill();
-      ctx.fillStyle = "#33506a";
+      ctx.stroke();
+      this.drawPaperLines(ctx, 0, 8, pageW, pageH);
+      this.drawPaperRevision(ctx, 6, 11, this.paperLabels[i] || 1, scale);
+      ctx.restore();
     }
+  }
 
-    ctx.fillStyle = "#556b80";
-    roundedRectPath(ctx, -2, height - 10, width + 4, 10, 5);
-    ctx.fill();
+  drawFlyingPapers(ctx, time) {
+    const bob = Math.sin(time * 8 + this.phase) * 3;
+    ctx.translate(0, bob);
+
+    for (let i = 0; i < 2; i++) {
+      ctx.save();
+      ctx.translate(i * 20, i * 4);
+      ctx.rotate((Math.sin(time * 7 + this.phase + i) * 10 - 10) * Math.PI / 180);
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#bed0e4";
+      ctx.lineWidth = 1.5;
+      roundedRectPath(ctx, 0, 0, 36, 24, 4);
+      ctx.fill();
+      ctx.stroke();
+      this.drawPaperLines(ctx, 0, 0, 36, 24);
+      this.drawPaperRevision(ctx, 4, 3, this.paperLabels[i] || 1, 0.92);
+      ctx.beginPath();
+      ctx.moveTo(27, 0);
+      ctx.lineTo(36, 9);
+      ctx.lineTo(27, 9);
+      ctx.closePath();
+      ctx.fillStyle = "#eef4fb";
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 }
 
@@ -789,48 +796,38 @@ class ObstacleManager {
   constructor(game) {
     this.game = game;
     this.items = [];
-    this.cooldown = 0.9;
+    this.cooldown = 0.84;
     this.lastType = null;
     this.types = [
       {
-        kind: "houseLow",
+        kind: "paperPile",
         width: 58,
-        height: 48,
-        minGap: 250,
+        height: 38,
+        minGap: 235,
         difficulty: 0,
         behavior: "jump",
-        hitInsetX: 6,
+        hitInsetX: 8,
         hitInsetY: 6,
       },
       {
-        kind: "houseTall",
+        kind: "paperStack",
         width: 72,
-        height: 78,
-        minGap: 290,
-        difficulty: 0.18,
+        height: 58,
+        minGap: 270,
+        difficulty: 0.16,
         behavior: "jump",
-        hitInsetX: 6,
-        hitInsetY: 6,
+        hitInsetX: 10,
+        hitInsetY: 8,
       },
       {
-        kind: "towerSlim",
-        width: 54,
-        height: 96,
-        minGap: 336,
-        difficulty: 0.30,
-        behavior: "jump",
-        hitInsetX: 5,
-        hitInsetY: 6,
-      },
-      {
-        kind: "skybridge",
-        width: 104,
-        height: 36,
-        minGap: 300,
+        kind: "paperHigh",
+        width: 58,
+        height: 30,
+        minGap: 270,
         difficulty: 0.14,
         behavior: "duck",
-        offsetY: -88,
-        hitInsetX: 6,
+        offsetY: -110,
+        hitInsetX: 7,
         hitInsetY: 4,
       },
     ];
@@ -838,7 +835,7 @@ class ObstacleManager {
 
   reset() {
     this.items.length = 0;
-    this.cooldown = 0.9;
+    this.cooldown = 0.84;
     this.lastType = null;
   }
 
@@ -860,7 +857,7 @@ class ObstacleManager {
       this.items.push(new Obstacle(this.game, type, this.game.worldWidth + 40));
       const speedFactor = this.game.speed / CONFIG.baseSpeed;
       const baseGap = type.minGap / Math.max(1, speedFactor * 0.86);
-      const randomGap = 90 + Math.random() * 140;
+      const randomGap = 88 + Math.random() * 138;
       const gapDistance = Math.max(220, baseGap + randomGap);
       this.cooldown = gapDistance / this.game.speed / CONFIG.obstacleFrequency;
     }
@@ -881,13 +878,13 @@ class BeveragePickup {
     this.x = x;
     this.phase = Math.random() * Math.PI * 2;
     if (kind === "teapot") {
-      this.width = 54;
-      this.height = 54;
-      this.y = game.groundY - 154 - Math.random() * 20;
+      this.width = 70;
+      this.height = 56;
+      this.y = game.groundY - 162 - Math.random() * 22;
     } else {
-      this.width = 42;
-      this.height = 42;
-      this.y = game.groundY - 146 - Math.random() * 18;
+      this.width = 62;
+      this.height = 52;
+      this.y = game.groundY - 154 - Math.random() * 18;
     }
   }
 
@@ -896,11 +893,12 @@ class BeveragePickup {
   }
 
   getBounds() {
+    const inset = this.kind === "teapot" ? 8 : 10;
     return {
-      x: this.x + 5,
-      y: this.y + 6,
-      width: this.width - 10,
-      height: this.height - 12,
+      x: this.x + inset,
+      y: this.y + inset,
+      width: this.width - inset * 2,
+      height: this.height - inset * 2,
     };
   }
 
@@ -909,15 +907,18 @@ class BeveragePickup {
     ctx.save();
     ctx.translate(this.x, this.y + bob);
     ctx.setLineDash([]);
-    ctx.fillStyle = this.kind === "teapot" ? "rgba(255,233,180,0.17)" : "rgba(255,255,255,0.23)";
+    ctx.fillStyle = this.kind === "teapot" ? "rgba(255,220,132,0.16)" : "rgba(255,255,255,0.22)";
     ctx.beginPath();
-    ctx.arc(this.width * 0.5, this.height * 0.5, Math.max(this.width, this.height) * 0.52, 0, Math.PI * 2);
+    ctx.arc(this.width * 0.5, this.height * 0.52, Math.max(this.width, this.height) * 0.52, 0, Math.PI * 2);
     ctx.fill();
 
-    if (this.kind === "teapot") {
-      this.drawTeapot(ctx);
-    } else {
-      this.drawCup(ctx);
+    const art = getGameArt(this.kind);
+    if (!drawContainedImage(ctx, art, 0, 0, this.width, this.height)) {
+      if (this.kind === "teapot") {
+        this.drawTeapot(ctx);
+      } else {
+        this.drawCup(ctx);
+      }
     }
     ctx.restore();
   }
@@ -1081,55 +1082,58 @@ function drawCartIllustration(ctx, x, y, width, height) {
 
   ctx.fillStyle = "rgba(0,0,0,0.12)";
   ctx.beginPath();
-  ctx.ellipse(width * 0.5, height + 4, width * 0.42, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(width * 0.5, height + 5, width * 0.42, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const body = ctx.createLinearGradient(0, 8, 0, height - 8);
-  body.addColorStop(0, "#5b6476");
-  body.addColorStop(1, "#252b37");
-  ctx.fillStyle = body;
-  roundedRectPath(ctx, 14, 10, width - 26, height - 20, 10);
-  ctx.fill();
+  const art = getGameArt("cart");
+  if (!drawContainedImage(ctx, art, 0, 0, width, height)) {
+    const body = ctx.createLinearGradient(0, 8, 0, height - 8);
+    body.addColorStop(0, "#5b6476");
+    body.addColorStop(1, "#252b37");
+    ctx.fillStyle = body;
+    roundedRectPath(ctx, 14, 10, width - 26, height - 20, 10);
+    ctx.fill();
 
-  ctx.strokeStyle = "#111823";
-  ctx.lineWidth = 2;
-  ctx.stroke();
+    ctx.strokeStyle = "#111823";
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
-  ctx.fillStyle = "#2f3746";
-  roundedRectPath(ctx, 20, 4, width - 34, 12, 6);
-  ctx.fill();
+    ctx.fillStyle = "#2f3746";
+    roundedRectPath(ctx, 20, 4, width - 34, 12, 6);
+    ctx.fill();
 
-  ctx.fillStyle = "#252b37";
-  roundedRectPath(ctx, 18, height - 15, width - 30, 11, 6);
-  ctx.fill();
+    ctx.fillStyle = "#252b37";
+    roundedRectPath(ctx, 18, height - 15, width - 30, 11, 6);
+    ctx.fill();
 
-  ctx.fillStyle = "#f6b21f";
-  for (let i = 0; i < 4; i++) {
-    ctx.save();
-    ctx.translate(31 + i * 14, 32);
-    ctx.rotate(-0.5);
-    ctx.fillRect(0, 0, 8, 16);
-    ctx.restore();
+    ctx.fillStyle = "#f6b21f";
+    for (let i = 0; i < 4; i++) {
+      ctx.save();
+      ctx.translate(31 + i * 14, 32);
+      ctx.rotate(-0.5);
+      ctx.fillRect(0, 0, 8, 16);
+      ctx.restore();
+    }
+
+    ctx.strokeStyle = "#2a2f3b";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(12, 26);
+    ctx.lineTo(3, 26);
+    ctx.lineTo(3, 40);
+    ctx.stroke();
+
+    ctx.fillStyle = "#2c2f3a";
+    ctx.beginPath();
+    ctx.arc(28, height - 2, 9, 0, Math.PI * 2);
+    ctx.arc(width - 28, height - 2, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#7e8596";
+    ctx.beginPath();
+    ctx.arc(28, height - 2, 4.5, 0, Math.PI * 2);
+    ctx.arc(width - 28, height - 2, 4.5, 0, Math.PI * 2);
+    ctx.fill();
   }
-
-  ctx.strokeStyle = "#2a2f3b";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(12, 26);
-  ctx.lineTo(3, 26);
-  ctx.lineTo(3, 40);
-  ctx.stroke();
-
-  ctx.fillStyle = "#2c2f3a";
-  ctx.beginPath();
-  ctx.arc(28, height - 2, 9, 0, Math.PI * 2);
-  ctx.arc(width - 28, height - 2, 9, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#7e8596";
-  ctx.beginPath();
-  ctx.arc(28, height - 2, 4.5, 0, Math.PI * 2);
-  ctx.arc(width - 28, height - 2, 4.5, 0, Math.PI * 2);
-  ctx.fill();
 
   ctx.restore();
 }
@@ -1702,7 +1706,7 @@ class Game {
 
     if (!this.isRidingCart()) {
       for (const obs of this.obstacles.items) {
-        if (this.intersects(this.player.getBounds(), obs.getBounds())) {
+        if (this.intersectsObstacle(this.player.getBounds(), obs.getBounds())) {
           this.takeDamage();
           break;
         }
@@ -1715,6 +1719,23 @@ class Game {
 
   intersects(a, b) {
     return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+  }
+
+  intersectsObstacle(a, b) {
+    const left = Math.max(a.x, b.x);
+    const right = Math.min(a.x + a.width, b.x + b.width);
+    const top = Math.max(a.y, b.y);
+    const bottom = Math.min(a.y + a.height, b.y + b.height);
+    const overlapX = right - left;
+    const overlapY = bottom - top;
+
+    if (overlapX <= 10 || overlapY <= 10) return false;
+
+    const playerFeet = a.y + a.height;
+    const obstacleTop = b.y;
+    if (!this.player.grounded && playerFeet <= obstacleTop + 12) return false;
+
+    return true;
   }
 
   render() {
