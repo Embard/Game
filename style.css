@@ -232,3 +232,9 @@ kbd {
   color: #5f7190;
   justify-content: flex-start !important;
 }
+
+.leaderboard-head p#leaderboardStatus {
+  margin: 4px 0 0;
+  color: #4f6482;
+  font-size: 0.95rem;
+}
