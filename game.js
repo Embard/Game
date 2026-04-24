@@ -4,7 +4,7 @@ const CONFIG = {
   gravity: 2160,
   jumpForce: 790,
   baseSpeed: 300,
-  speedGrowth: 4.4,
+  speedGrowth: 4.9,
   obstacleFrequency: 0.96,
   maxDt: 0.033,
   groundHeight: 96,
@@ -13,8 +13,8 @@ const CONFIG = {
   invulnerabilityDuration: 1.05,
   beverageSpawnMin: 3.6,
   beverageSpawnMax: 5.8,
-  cartSpawnMin: 13.5,
-  cartSpawnMax: 19.5,
+  cartSpawnMin: 25.0,
+  cartSpawnMax: 38.0,
   cup: {
     healUnits: 1,
     slowdownAmount: 10,
@@ -28,7 +28,7 @@ const CONFIG = {
     slowDuration: 2.6,
   },
   cartRideDuration: 4.0,
-  cartRideOffsetY: 42,
+  cartRideOffsetY: 46,
 };
 
 const STORAGE_KEY = "gip-runner-best";
@@ -679,10 +679,7 @@ class Obstacle {
     this.phase = Math.random() * Math.PI * 2;
     this.paperLabels = [];
 
-    if (type.kind === "paperPile" || type.kind === "paperStack") {
-      const count = type.kind === "paperStack" ? 5 : 4;
-      this.paperLabels = Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 50));
-    } else if (type.kind === "paperHigh") {
+    if (type.kind === "paperHigh") {
       this.paperLabels = Array.from({ length: 2 }, () => 1 + Math.floor(Math.random() * 50));
     }
   }
@@ -705,15 +702,116 @@ class Obstacle {
     ctx.translate(this.x, this.y);
     ctx.setLineDash([]);
 
-    if (this.type.kind === "paperPile") {
-      this.drawPaperPile(ctx, 4, 0.98);
-    } else if (this.type.kind === "paperStack") {
-      this.drawPaperPile(ctx, 5, 1.06);
-    } else if (this.type.kind === "paperHigh") {
-      this.drawFlyingPapers(ctx, this.game.time);
+    switch (this.type.kind) {
+      case "houseLow":
+        this.drawBuilding(ctx, this.width, this.height, 2, 2);
+        break;
+      case "houseTall":
+        this.drawBuilding(ctx, this.width, this.height, 3, 3);
+        break;
+      case "towerSlim":
+        this.drawTower(ctx);
+        break;
+      case "paperHigh":
+        this.drawFlyingPapers(ctx, this.game.time);
+        break;
+      default:
+        this.drawBuilding(ctx, this.width, this.height, 2, 2);
+        break;
     }
 
     ctx.restore();
+  }
+
+  drawBuilding(ctx, width, height, cols, rows) {
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.beginPath();
+    ctx.ellipse(width * 0.5, height + 3, width * 0.45, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#55687b";
+    roundedRectPath(ctx, 0, 0, width, height, 8);
+    ctx.fill();
+
+    const wall = ctx.createLinearGradient(0, 0, 0, height);
+    wall.addColorStop(0, "#8a786f");
+    wall.addColorStop(1, "#665148");
+    ctx.fillStyle = wall;
+    roundedRectPath(ctx, 4, 5, width - 8, height - 10, 6);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.13)";
+    ctx.lineWidth = 1;
+    for (let x = 10; x < width - 8; x += 12) {
+      ctx.beginPath();
+      ctx.moveTo(x, 6);
+      ctx.lineTo(x, height - 6);
+      ctx.stroke();
+    }
+    for (let y = 12; y < height - 8; y += 11) {
+      ctx.beginPath();
+      ctx.moveTo(5, y);
+      ctx.lineTo(width - 5, y);
+      ctx.stroke();
+    }
+
+    const paddingX = 10;
+    const paddingY = 12;
+    const gapX = 8;
+    const gapY = 8;
+    const winW = Math.max(9, Math.floor((width - paddingX * 2 - gapX * (cols - 1)) / cols));
+    const winH = Math.max(8, Math.floor((height - paddingY * 2 - gapY * (rows - 1)) / rows));
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = paddingX + col * (winW + gapX);
+        const y = paddingY + row * (winH + gapY);
+        ctx.fillStyle = "#223e57";
+        roundedRectPath(ctx, x, y, winW, winH, 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(170, 213, 255, 0.52)";
+        roundedRectPath(ctx, x + 2, y + 2, winW - 4, winH - 4, 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = "#c1a29a";
+    roundedRectPath(ctx, -3, -6, width + 6, 12, 5);
+    ctx.fill();
+    ctx.fillStyle = "#626f7c";
+    roundedRectPath(ctx, -3, height - 8, width + 6, 10, 5);
+    ctx.fill();
+  }
+
+  drawTower(ctx) {
+    const width = this.width;
+    const height = this.height;
+
+    ctx.fillStyle = "rgba(0,0,0,0.13)";
+    ctx.beginPath();
+    ctx.ellipse(width * 0.5, height + 3, width * 0.42, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#596d82";
+    roundedRectPath(ctx, 7, 0, width - 14, height, 10);
+    ctx.fill();
+
+    const glass = ctx.createLinearGradient(0, 0, width, 0);
+    glass.addColorStop(0, "#314254");
+    glass.addColorStop(0.5, "#81b9de");
+    glass.addColorStop(1, "#314254");
+    ctx.fillStyle = glass;
+    roundedRectPath(ctx, 13, 8, width - 26, height - 16, 9);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
+    for (let y = 14; y < height - 14; y += 16) {
+      ctx.fillRect(17, y, width - 34, 3);
+    }
+
+    ctx.fillStyle = "#6f8397";
+    roundedRectPath(ctx, 3, height - 8, width - 6, 10, 5);
+    ctx.fill();
   }
 
   drawPaperRevision(ctx, x, y, number, scale = 1) {
@@ -737,29 +835,8 @@ class Obstacle {
 
   drawPaperLines(ctx, x, y, width, height) {
     ctx.fillStyle = "rgba(133, 167, 209, 0.58)";
-    for (let lineY = y + 8; lineY < y + height - 6; lineY += 6) {
-      ctx.fillRect(x + 6, lineY, width - 16, 1.2);
-    }
-  }
-
-  drawPaperPile(ctx, pages = 4, scale = 1) {
-    const pageW = this.width - 12;
-    const pageH = this.height - 14;
-    for (let i = 0; i < pages; i++) {
-      const shiftX = i * 4;
-      const shiftY = -i * 2;
-      ctx.save();
-      ctx.translate(shiftX, shiftY);
-      ctx.rotate((-6 + i * 4) * Math.PI / 180);
-      ctx.fillStyle = i % 2 ? "#ffffff" : "#f6fbff";
-      ctx.strokeStyle = "#b8cbe0";
-      ctx.lineWidth = 1.4;
-      roundedRectPath(ctx, 0, 8, pageW, pageH, 4);
-      ctx.fill();
-      ctx.stroke();
-      this.drawPaperLines(ctx, 0, 8, pageW, pageH);
-      this.drawPaperRevision(ctx, 6, 11, this.paperLabels[i] || 1, scale);
-      ctx.restore();
+    for (let lineY = y + 10; lineY < y + height - 4; lineY += 5) {
+      ctx.fillRect(x + 6, lineY, width - 16, 1.1);
     }
   }
 
@@ -796,35 +873,45 @@ class ObstacleManager {
   constructor(game) {
     this.game = game;
     this.items = [];
-    this.cooldown = 0.84;
+    this.cooldown = 0.9;
     this.lastType = null;
     this.types = [
       {
-        kind: "paperPile",
-        width: 58,
-        height: 38,
-        minGap: 235,
+        kind: "houseLow",
+        width: 64,
+        height: 50,
+        minGap: 250,
         difficulty: 0,
-        behavior: "jump",
-        hitInsetX: 8,
-        hitInsetY: 6,
-      },
-      {
-        kind: "paperStack",
-        width: 72,
-        height: 58,
-        minGap: 270,
-        difficulty: 0.16,
         behavior: "jump",
         hitInsetX: 10,
         hitInsetY: 8,
       },
       {
-        kind: "paperHigh",
+        kind: "houseTall",
+        width: 74,
+        height: 78,
+        minGap: 304,
+        difficulty: 0.18,
+        behavior: "jump",
+        hitInsetX: 10,
+        hitInsetY: 8,
+      },
+      {
+        kind: "towerSlim",
         width: 58,
+        height: 94,
+        minGap: 338,
+        difficulty: 0.32,
+        behavior: "jump",
+        hitInsetX: 9,
+        hitInsetY: 8,
+      },
+      {
+        kind: "paperHigh",
+        width: 60,
         height: 30,
-        minGap: 270,
-        difficulty: 0.14,
+        minGap: 280,
+        difficulty: 0.16,
         behavior: "duck",
         offsetY: -110,
         hitInsetX: 7,
@@ -835,7 +922,7 @@ class ObstacleManager {
 
   reset() {
     this.items.length = 0;
-    this.cooldown = 0.84;
+    this.cooldown = 0.9;
     this.lastType = null;
   }
 
@@ -843,6 +930,12 @@ class ObstacleManager {
     const level = this.game.speed / CONFIG.baseSpeed;
     let pool = this.types.filter((t) => t.difficulty <= level * 0.55 + 0.35);
     if (!pool.length) pool = this.types.slice();
+
+    if (Math.random() < 0.34) {
+      const duckOnly = pool.filter((t) => t.behavior === "duck");
+      if (duckOnly.length) pool = duckOnly.concat(pool);
+    }
+
     const available = pool.filter((t) => t.kind !== this.lastType);
     const source = available.length ? available : pool;
     const next = source[Math.floor(Math.random() * source.length)] || pool[0];
@@ -857,8 +950,8 @@ class ObstacleManager {
       this.items.push(new Obstacle(this.game, type, this.game.worldWidth + 40));
       const speedFactor = this.game.speed / CONFIG.baseSpeed;
       const baseGap = type.minGap / Math.max(1, speedFactor * 0.86);
-      const randomGap = 88 + Math.random() * 138;
-      const gapDistance = Math.max(220, baseGap + randomGap);
+      const randomGap = 90 + Math.random() * 145;
+      const gapDistance = Math.max(225, baseGap + randomGap);
       this.cooldown = gapDistance / this.game.speed / CONFIG.obstacleFrequency;
     }
 
@@ -1048,8 +1141,8 @@ class CartPickup {
   constructor(game, x) {
     this.game = game;
     this.x = x;
-    this.width = 98;
-    this.height = 58;
+    this.width = 124;
+    this.height = 76;
     this.y = game.groundY - this.height + 2;
     this.phase = Math.random() * Math.PI * 2;
   }
@@ -1151,7 +1244,7 @@ class CartManager {
 
   reset() {
     this.items.length = 0;
-    this.cooldown = 8.5;
+    this.cooldown = 17.0;
   }
 
   update(dt) {
@@ -1754,7 +1847,7 @@ class Game {
     this.obstacles.draw(ctx);
     this.carts.draw(ctx);
     if (this.isRidingCart()) {
-      drawCartIllustration(ctx, this.player.x - 2, this.groundY - 56, 98, 58);
+      drawCartIllustration(ctx, this.player.x - 12, this.groundY - 76, 124, 76);
     }
     if (this.invulnerabilityTimer > 0 && !this.isRidingCart()) {
       ctx.save();
@@ -1783,7 +1876,7 @@ class Game {
     const total = CONFIG.cartRideDuration;
     const value = clamp(this.cartRideTimer / total, 0, 1);
     const x = this.player.x - 10;
-    const y = this.groundY - 118;
+    const y = this.groundY - 136;
     const w = 130;
     const h = 18;
 
