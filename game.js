@@ -458,7 +458,7 @@ class Player {
 
     const phase = wrap01(this.runTime * 1.6);
     const bodyBob = this.grounded && !this.ducking ? Math.sin(phase * Math.PI * 2) * 1.0 : 0;
-    const lean = this.ducking ? -0.06 : (!this.grounded ? (this.vy < 0 ? -0.14 : -0.08) : -0.18);
+    const lean = this.ducking ? 0.26 : (!this.grounded ? (this.vy < 0 ? 0.08 : 0.16) : 0.16);
     const squashY = this.grounded ? 1 - this.squash * 0.08 : 1 + Math.min(0.05, Math.abs(this.vy) / 3000);
     const squashX = this.grounded ? 1 + this.squash * 0.08 : 1 - Math.min(0.03, Math.abs(this.vy) / 3000);
 
@@ -608,23 +608,23 @@ class Player {
     const torsoTop = -16;
     const torsoHeight = 34;
 
-    const backArm = { shoulderX: -6, shoulderY: -10, elbowX: -16, elbowY: -2, handX: -24, handY: 4 };
-    const frontArm = { shoulderX: 12, shoulderY: -8, elbowX: 26, elbowY: -2, handX: 38, handY: 4 };
-    const backLeg = { hipX: -10, hipY: 16, kneeX: -2, kneeY: 20, ankleX: 8, ankleY: 17 };
-    const frontLeg = { hipX: 3, hipY: 16, kneeX: 22, kneeY: 19, ankleX: 34, ankleY: 16 };
+    const backArm = { shoulderX: -10, shoulderY: -8, elbowX: -2, elbowY: -1, handX: 10, handY: 5 };
+    const frontArm = { shoulderX: 10, shoulderY: -8, elbowX: 22, elbowY: -1, handX: 34, handY: 5 };
+    const backLeg = { hipX: -10, hipY: 16, kneeX: 0, kneeY: 22, ankleX: 16, ankleY: 18 };
+    const frontLeg = { hipX: 4, hipY: 16, kneeX: 22, kneeY: 20, ankleX: 38, ankleY: 16 };
 
     this.drawArmLimb(ctx, backArm, true);
     this.drawLegLimb(ctx, backLeg, true);
 
     ctx.save();
-    ctx.translate(2, 4);
-    ctx.rotate(degToRad(-56));
+    ctx.translate(10, 2);
+    ctx.rotate(degToRad(28));
     this.drawTorso(ctx, torsoTop, torsoHeight);
     ctx.restore();
 
     this.drawLegLimb(ctx, frontLeg, false);
     this.drawArmLimb(ctx, frontArm, false);
-    this.drawHead(ctx, 22, -22);
+    this.drawHead(ctx, 28, -24);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
