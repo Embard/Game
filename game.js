@@ -151,6 +151,30 @@ function normalizePlayerName(value) {
     .slice(0, 18) || "Игрок";
 }
 
+function leaderboardNameKey(value) {
+  return normalizePlayerName(value)
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[.#$\[\]\/]/g, "_")
+    .slice(0, 32) || "igrok";
+}
+
+function mergeLeaderboardRows(rows) {
+  const map = new Map();
+  for (const raw of Array.isArray(rows) ? rows : []) {
+    const name = normalizePlayerName(raw && raw.name);
+    const score = Number((raw && raw.score) || 0);
+    const tea = Number((raw && raw.tea) || 0);
+    const date = raw && raw.date ? String(raw.date) : "";
+    const key = name.toLowerCase();
+    const existing = map.get(key);
+    if (!existing || score > existing.score || (score === existing.score && date > existing.date)) {
+      map.set(key, { name, score, tea, date });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.score - a.score || String(b.date).localeCompare(String(a.date)));
+}
+
 class AudioEngine {
   constructor() {
     this.ctx = null;
