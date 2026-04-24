@@ -28,7 +28,7 @@ const CONFIG = {
     slowDuration: 2.6,
   },
   cartRideDuration: 4.0,
-  cartRideOffsetY: 28,
+  cartRideOffsetY: 42,
 };
 
 const STORAGE_KEY = "gip-runner-best";
@@ -406,11 +406,12 @@ class Player {
     this.runTime += dt * (this.game.speed / CONFIG.baseSpeed) * 1.5;
 
     if (this.game.isRidingCart()) {
-      this.ducking = false;
+      // На тележке персонаж не бежит, а едет в низкой позе.
+      this.ducking = true;
       this.grounded = true;
-      this.slideTimer = 0;
+      this.slideTimer = 0.2;
       this.slideCooldown = 0;
-      this.height = this.standHeight;
+      this.height = this.slideHeight;
       this.vy = 0;
       this.y = this.game.groundY - this.height - CONFIG.cartRideOffsetY;
       this.landingDust = 0;
@@ -478,25 +479,28 @@ class Player {
   }
 
   getSpriteFrameName() {
+    if (this.game.isRidingCart()) return "slide";
     if (this.ducking && this.grounded) return "slide";
     if (!this.grounded) return this.vy < 150 ? "jump" : "land";
     const frames = ["run1", "run2", "run3", "run4"];
-    const phase = wrap01(this.runTime * 1.3);
+    const phase = wrap01(this.runTime * 1.75);
     const index = Math.floor(phase * frames.length) % frames.length;
     return frames[index];
   }
 
   draw(ctx) {
     const centerX = this.x + this.width * 0.5;
-    const groundY = this.game.groundY - (this.game.isRidingCart() ? CONFIG.cartRideOffsetY : 0);
-    const sliding = this.ducking && this.grounded && !this.game.isRidingCart();
-    const airborne = !this.grounded && !this.game.isRidingCart();
+    const riding = this.game.isRidingCart();
+    const visualGroundY = riding ? this.game.groundY - CONFIG.cartRideOffsetY : this.game.groundY;
+    const sliding = (this.ducking && this.grounded && !riding) || riding;
+    const airborne = !this.grounded && !riding;
     const descending = airborne && this.vy >= 120;
-    const runBob = this.grounded && !sliding && !this.game.isRidingCart() ? Math.sin(this.runTime * 13) * 2.2 : 0;
+    const runBob = this.grounded && !sliding && !riding ? Math.sin(this.runTime * 13) * 2.2 : 0;
+    const visualBottomY = riding ? visualGroundY : airborne ? this.y + this.height : this.game.groundY;
 
     ctx.save();
     ctx.setLineDash([]);
-    const shadowAlpha = this.game.isRidingCart() ? 0 : this.grounded ? 0.13 : 0.08;
+    const shadowAlpha = riding ? 0 : this.grounded ? 0.13 : 0.08;
     if (shadowAlpha > 0) {
       ctx.fillStyle = `rgba(35, 64, 92, ${shadowAlpha})`;
       ctx.beginPath();
@@ -520,7 +524,11 @@ class Player {
       let xOffset = 0;
       let yOffset = 0;
 
-      if (sliding) {
+      if (riding) {
+        drawH = 82;
+        xOffset = -14;
+        yOffset = 4;
+      } else if (sliding) {
         drawH = 90;
         xOffset = -16;
         yOffset = 2;
@@ -536,10 +544,10 @@ class Player {
       const aspect = sprite.naturalWidth / Math.max(1, sprite.naturalHeight);
       const drawW = drawH * aspect;
       const drawX = centerX - drawW * 0.5 + xOffset;
-      const drawY = groundY - drawH + yOffset + runBob;
+      const drawY = visualBottomY - drawH + yOffset + runBob;
       ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
     } else {
-      this.drawFallback(ctx, centerX, groundY, runBob, sliding, airborne);
+      this.drawFallback(ctx, centerX, visualBottomY, runBob, sliding, airborne);
     }
 
     ctx.restore();
@@ -1736,6 +1744,10 @@ class Game {
       this.player.draw(ctx);
     }
 
+    if (this.isRidingCart()) {
+      this.drawCartTimer(ctx);
+    }
+
     if (this.hitFlash > 0) {
       ctx.fillStyle = `rgba(255,80,80,${this.hitFlash * 0.25})`;
       ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
@@ -1743,6 +1755,34 @@ class Game {
 
     this.drawHUD(ctx);
     this.drawStateMessage(ctx);
+    ctx.restore();
+  }
+
+  drawCartTimer(ctx) {
+    const total = CONFIG.cartRideDuration;
+    const value = clamp(this.cartRideTimer / total, 0, 1);
+    const x = this.player.x - 10;
+    const y = this.groundY - 118;
+    const w = 130;
+    const h = 18;
+
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,0.88)";
+    roundedRectPath(ctx, x, y, w, h + 18, 10);
+    ctx.fill();
+
+    ctx.fillStyle = "#1f5d4c";
+    ctx.font = "800 13px Inter, sans-serif";
+    ctx.fillText(`Тележка ${Math.ceil(this.cartRideTimer)}с`, x + 10, y + 14);
+
+    ctx.fillStyle = "rgba(35, 92, 77, 0.18)";
+    roundedRectPath(ctx, x + 10, y + 21, w - 20, 7, 5);
+    ctx.fill();
+
+    ctx.fillStyle = value > 0.33 ? "#2aa36f" : "#e17c35";
+    roundedRectPath(ctx, x + 10, y + 21, (w - 20) * value, 7, 5);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -1775,7 +1815,7 @@ class Game {
 
     if (this.isRidingCart()) {
       ctx.fillStyle = "#23725d";
-      ctx.fillText(`Тележка: ${this.cartRideTimer.toFixed(1)}с`, panelX + 272, panelY + 78);
+      ctx.fillText(`Тележка: ${Math.ceil(this.cartRideTimer)}с`, panelX + 272, panelY + 78);
     }
 
     ctx.restore();
@@ -1828,7 +1868,7 @@ class Game {
       this.drawOverlayText(
         ctx,
         "Нажми пробел или тапни",
-        "У тебя 3 сердца. Кружка восстанавливает половину сердца, чайник — целое сердце, тележка даёт 4 секунды защиты.",
+        "У тебя 3 сердца. Кружка восстанавливает половину сердца, чайник — целое сердце, тележка даёт 4 секунды защиты с таймером.",
         pulse
       );
     }
