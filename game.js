@@ -54,6 +54,13 @@ const CHARACTERS = [
     path: "assets/characters/gip",
     preview: "assets/characters/gip/preview.png",
   },
+  {
+    id: "alexey",
+    name: "Alexey",
+    description: "Новый персонаж",
+    path: "assets/characters/alexey",
+    preview: "assets/characters/alexey/preview.png",
+  },
 ];
 
 function getCharacterById(id) {
@@ -908,14 +915,14 @@ class ObstacleManager {
       },
       {
         kind: "paperHigh",
-        width: 60,
-        height: 30,
+        width: 66,
+        height: 38,
         minGap: 280,
         difficulty: 0.16,
         behavior: "duck",
-        offsetY: -110,
-        hitInsetX: 7,
-        hitInsetY: 4,
+        offsetY: -86,
+        hitInsetX: 5,
+        hitInsetY: 2,
       },
     ];
   }
@@ -1826,9 +1833,9 @@ class Game {
 
     const needsSlide = obstacle && obstacle.type && obstacle.type.behavior === "duck";
     if (needsSlide) {
-      // Верхние листы должны быть опасными всегда, кроме реального скольжения.
+      // Верхние листы должны задевать стоящего персонажа и пропускать только реальное скольжение.
       if (this.player.ducking && this.player.grounded) return false;
-      return overlapX > 8 && overlapY > 8;
+      return overlapX > 14 && overlapY > 4;
     }
 
     const playerFeet = a.y + a.height;
@@ -1884,27 +1891,36 @@ class Game {
   drawCartTimer(ctx) {
     const total = CONFIG.cartRideDuration;
     const value = clamp(this.cartRideTimer / total, 0, 1);
-    const x = this.player.x - 10;
-    const y = this.groundY - 136;
-    const w = 130;
-    const h = 18;
+    const w = 176;
+    const h = 58;
+    const x = 454;
+    const y = this.groundY + 18;
 
     ctx.save();
     ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(255,255,255,0.88)";
-    roundedRectPath(ctx, x, y, w, h + 18, 10);
+    ctx.fillStyle = "rgba(255,255,255,0.90)";
+    roundedRectPath(ctx, x, y, w, h, 12);
     ctx.fill();
 
-    ctx.fillStyle = "#1f5d4c";
-    ctx.font = "800 13px Inter, sans-serif";
-    ctx.fillText(`Тележка ${Math.ceil(this.cartRideTimer)}с`, x + 10, y + 14);
+    ctx.strokeStyle = "rgba(31,93,76,0.18)";
+    ctx.lineWidth = 1;
+    roundedRectPath(ctx, x, y, w, h, 12);
+    ctx.stroke();
 
-    ctx.fillStyle = "rgba(35, 92, 77, 0.18)";
-    roundedRectPath(ctx, x + 10, y + 21, w - 20, 7, 5);
+    ctx.fillStyle = "#1f5d4c";
+    ctx.font = "800 14px Inter, sans-serif";
+    ctx.fillText("Тележка активна", x + 12, y + 18);
+
+    ctx.fillStyle = "#335a7a";
+    ctx.font = "700 13px Inter, sans-serif";
+    ctx.fillText(`Осталось: ${this.cartRideTimer.toFixed(1)}с`, x + 12, y + 37);
+
+    ctx.fillStyle = "rgba(35, 92, 77, 0.16)";
+    roundedRectPath(ctx, x + 12, y + 43, w - 24, 8, 5);
     ctx.fill();
 
     ctx.fillStyle = value > 0.33 ? "#2aa36f" : "#e17c35";
-    roundedRectPath(ctx, x + 10, y + 21, (w - 20) * value, 7, 5);
+    roundedRectPath(ctx, x + 12, y + 43, (w - 24) * value, 8, 5);
     ctx.fill();
     ctx.restore();
   }
@@ -1912,7 +1928,7 @@ class Game {
   drawHUD(ctx) {
     ctx.save();
     const panelW = 390;
-    const panelH = this.isRidingCart() ? 108 : 88;
+    const panelH = 88;
     const panelX = 16;
     const panelY = 12;
 
@@ -1936,10 +1952,6 @@ class Game {
     ctx.font = "600 14px Inter, sans-serif";
     ctx.fillText(`Скорость: ${(this.speed / 100).toFixed(2)}x`, panelX + 150, panelY + 78);
 
-    if (this.isRidingCart()) {
-      ctx.fillStyle = "#23725d";
-      ctx.fillText(`Тележка: ${Math.ceil(this.cartRideTimer)}с`, panelX + 272, panelY + 78);
-    }
 
     ctx.restore();
   }
