@@ -151,37 +151,6 @@ function normalizePlayerName(value) {
     .slice(0, 18) || "Игрок";
 }
 
-
-function leaderboardNameKey(value) {
-  return normalizePlayerName(value)
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[.#$\[\]\/]/g, "_")
-    .slice(0, 32) || "igrok";
-}
-
-function mergeLeaderboardRows(rows) {
-  const map = new Map();
-  for (const raw of Array.isArray(rows) ? rows : []) {
-    const name = normalizePlayerName(raw && raw.name);
-    const score = Number((raw && raw.score) || 0);
-    const tea = Number((raw && raw.tea) || 0);
-    const date = raw && raw.date ? String(raw.date) : "";
-    const key = name.toLowerCase();
-    const existing = map.get(key);
-    if (!existing || score > existing.score || (score === existing.score && date > existing.date)) {
-      map.set(key, { name, score, tea, date });
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => b.score - a.score || String(b.date).localeCompare(String(a.date)));
-}
-
-function isTypingTarget(target) {
-  if (!target) return false;
-  const tag = String(target.tagName || "").toLowerCase();
-  return tag === "input" || tag === "textarea" || !!target.isContentEditable;
-}
-
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -644,13 +613,13 @@ class Player {
     this.drawLegLimb(ctx, legs[0], true);
 
     ctx.save();
-    ctx.rotate(degToRad(11));
+    ctx.rotate(degToRad(9));
     this.drawTorso(ctx, torsoTop, torsoHeight);
     ctx.restore();
 
     this.drawLegLimb(ctx, legs[1], false);
     this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 8, -52 + pelvisBob * 0.2, 23);
+    this.drawHead(ctx, 4, -56 + pelvisBob * 0.15, 23);
   }
 
   drawSlideFigure(ctx) {
@@ -658,40 +627,41 @@ class Player {
     const floorY = h / 2 - 2;
 
     ctx.save();
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.2;
     ctx.fillStyle = "#7baed7";
     ctx.beginPath();
-    ctx.ellipse(-10, floorY + 2, 48, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-8, floorY + 2, 44, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
+    // Компактная цельная поза скольжения: без визуальной каши.
     ctx.save();
-    ctx.translate(2, -4);
-    ctx.rotate(degToRad(14));
+    ctx.translate(0, 1);
+    ctx.rotate(degToRad(8));
 
-    // задняя рука — уходит назад, но остается цельной с силуэтом
-    ctx.strokeStyle = "#25547e";
-    ctx.lineWidth = 5;
+    // задняя нога компактно под телом
+    ctx.strokeStyle = "#22486e";
+    ctx.lineWidth = 8;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(-18, -3);
-    ctx.lineTo(-30, 2);
-    ctx.lineTo(-42, 8);
+    ctx.moveTo(-14, 13);
+    ctx.lineTo(-22, 20);
+    ctx.lineTo(-10, 25);
     ctx.stroke();
 
-    // задняя нога — согнута под корпусом
-    ctx.strokeStyle = "#22486e";
-    ctx.lineWidth = 8;
+    // задняя рука близко к телу
+    ctx.strokeStyle = "#25547e";
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(-12, 14);
-    ctx.lineTo(-24, 24);
-    ctx.lineTo(-10, 30);
+    ctx.moveTo(-16, -2);
+    ctx.lineTo(-24, 2);
+    ctx.lineTo(-33, 7);
     ctx.stroke();
 
-    // корпус как единая капсула
-    roundedRectPath(ctx, -30, -15, 64, 29, 14);
-    const shirt = ctx.createLinearGradient(-30, -15, 34, 14);
+    // корпус
+    roundedRectPath(ctx, -28, -14, 60, 28, 13);
+    const shirt = ctx.createLinearGradient(-28, -14, 32, 14);
     shirt.addColorStop(0, "#102b44");
     shirt.addColorStop(1, "#17466c");
     ctx.fillStyle = shirt;
@@ -702,42 +672,42 @@ class Player {
     ctx.globalAlpha = 0.16;
     ctx.strokeStyle = "#7cb0df";
     ctx.lineWidth = 1;
-    for (let x = -27; x <= 30; x += 7) {
+    for (let x = -25; x <= 28; x += 7) {
       ctx.beginPath();
-      ctx.moveTo(x, -18);
+      ctx.moveTo(x, -16);
       ctx.lineTo(x, 16);
       ctx.stroke();
     }
-    for (let y = -12; y <= 13; y += 6) {
+    for (let y = -10; y <= 12; y += 6) {
       ctx.beginPath();
-      ctx.moveTo(-32, y);
-      ctx.lineTo(36, y);
+      ctx.moveTo(-30, y);
+      ctx.lineTo(34, y);
       ctx.stroke();
     }
     ctx.restore();
 
-    // передняя рука — низко и вперед, как в скольжении Vector
+    // передняя рука вытянута вперёд низко
     ctx.strokeStyle = "#1d5684";
     ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.moveTo(6, -4);
-    ctx.lineTo(22, 0);
-    ctx.lineTo(36, 5);
+    ctx.moveTo(8, -2);
+    ctx.lineTo(20, 0);
+    ctx.lineTo(31, 3);
     ctx.stroke();
 
-    // передняя нога — вытянута вперед почти вдоль земли
+    // передняя нога длинная, почти вдоль пола
     ctx.strokeStyle = "#173f63";
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(4, 14);
-    ctx.lineTo(24, 21);
-    ctx.lineTo(44, 20);
+    ctx.moveTo(2, 13);
+    ctx.lineTo(20, 18);
+    ctx.lineTo(39, 18);
     ctx.stroke();
 
     ctx.restore();
 
-    // Голова ближе к корпусу и чуть выше, чтобы не казалась оторванной.
-    this.drawHead(ctx, 30, -35, 22);
+    // Голова ближе к шее и корпусу.
+    this.drawHead(ctx, 10, -28, 21);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
@@ -813,7 +783,7 @@ class Player {
 
   drawHead(ctx, cx, cy, headRadius = 22) {
     ctx.fillStyle = "#d6a787";
-    roundedRectPath(ctx, cx - 5, cy + headRadius - 2, 10, 12, 5);
+    roundedRectPath(ctx, cx - 6, cy + headRadius - 4, 12, 13, 5);
     ctx.fill();
 
     if (this.usePhoto) {
@@ -906,11 +876,21 @@ class Obstacle {
   }
 
   drawPaperRevision(ctx, x, y, number, scale = 1) {
+    const label = `Изм ${number}`;
+    const fontSize = Math.max(8, Math.round(8.5 * scale));
     ctx.save();
-    ctx.fillStyle = "#7c8ea7";
-    ctx.font = `${Math.round(6.5 * scale)}px Arial`;
+    ctx.font = `700 ${fontSize}px Arial`;
+    const width = Math.ceil(ctx.measureText(label).width) + 8;
+    const height = fontSize + 4;
+    ctx.fillStyle = "rgba(255, 244, 183, 0.98)";
+    ctx.strokeStyle = "#c18b00";
+    ctx.lineWidth = 1;
+    roundedRectPath(ctx, x - 2, y - 1, width, height, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#7a1f10";
     ctx.textBaseline = "top";
-    ctx.fillText(`Изм ${number}`, x, y);
+    ctx.fillText(label, x + 2, y + 1);
     ctx.restore();
   }
 
@@ -929,7 +909,7 @@ class Obstacle {
       for (let y = 16; y < this.height - 8; y += 7) {
         ctx.fillRect(6, y, this.width - 22, 1.2);
       }
-      this.drawPaperRevision(ctx, 7, 12, this.paperLabels[i] || 1, 1);
+      this.drawPaperRevision(ctx, 6, 11, this.paperLabels[i] || 1, 1.02);
       ctx.restore();
     }
   }
@@ -952,7 +932,7 @@ class Obstacle {
       for (let y = 10; y < 20; y += 5) {
         ctx.fillRect(5, y, 20, 1.2);
       }
-      this.drawPaperRevision(ctx, 5, 4, this.paperLabels[i] || 1, 0.9);
+      this.drawPaperRevision(ctx, 4, 3, this.paperLabels[i] || 1, 0.92);
       ctx.beginPath();
       ctx.moveTo(25, 0);
       ctx.lineTo(34, 9);
