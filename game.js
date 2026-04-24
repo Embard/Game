@@ -8,17 +8,17 @@ const CONFIG = {
   obstacleFrequency: 1.0,
   maxDt: 0.033,
   groundHeight: 82,
-  workdayDuration: 42.0,
-  teaSpawnMin: 2.4,
-  teaSpawnMax: 3.9,
-  teaTimeRewind: 5.5,
-  teaSlowdownFactor: 0.78,
-  teaSlowdownDuration: 4.2,
+  workdayDuration: 52.0,
+  teaSpawnMin: 4.3,
+  teaSpawnMax: 6.1,
+  teaTimeRewind: 1.55,
+  teaSlowdownFactor: 0.9,
+  teaSlowdownDuration: 3.0,
   photo: {
     path: "assets/player-photo.jpg",
     focusX: 0.15,
     focusY: 0.26,
-    zoom: 1.1,
+    zoom: 1.0,
     saturation: 1.08,
     contrast: 1.07,
     brightness: 1.02,
@@ -28,6 +28,16 @@ const CONFIG = {
 const STORAGE_KEY = "gip-runner-best";
 const LEADERBOARD_KEY = "gip-runner-leaderboard";
 const PLAYER_NAME_KEY = "gip-runner-player-name";
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDjs3ZU1vPYraihsEUhHdC_yGKGVBXfZN8",
+  authDomain: "runner-bb9a8.firebaseapp.com",
+  databaseURL: "https://runner-bb9a8-default-rtdb.firebaseio.com",
+  projectId: "runner-bb9a8",
+  storageBucket: "runner-bb9a8.firebasestorage.app",
+  messagingSenderId: "36209569924",
+  appId: "1:36209569924:web:f44e0b9bf1c3c818b492d1"
+};
+const LEADERBOARD_PATH = "leaderboard";
 
 const RUN_LEG_CYCLE = [
   { t: 0.0, x: 22, y: 0, foot: -4 },
@@ -124,6 +134,22 @@ function formatWorkTime(progress) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function normalizePlayerName(value) {
+  return String(value || "Игрок")
+    .trim()
+    .replace(/[\n\r\t<>]/g, "")
+    .slice(0, 18) || "Игрок";
+}
+
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -201,32 +227,23 @@ class PortraitTexture {
     const ih = this.image.naturalHeight || this.image.height;
     if (!iw || !ih) return;
 
-    const cropSize = Math.min(iw, ih) / CONFIG.photo.zoom;
-    const centerX = iw * CONFIG.photo.focusX;
-    const centerY = ih * CONFIG.photo.focusY;
-    let sx = centerX - cropSize / 2;
-    let sy = centerY - cropSize / 2;
-
-    sx = Math.max(0, Math.min(sx, iw - cropSize));
-    sy = Math.max(0, Math.min(sy, ih - cropSize));
-
     ctx.save();
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2 - 5, 0, Math.PI * 2);
-    ctx.closePath();
+    ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
     ctx.clip();
 
     ctx.filter = `saturate(${CONFIG.photo.saturation}) contrast(${CONFIG.photo.contrast}) brightness(${CONFIG.photo.brightness})`;
-    ctx.drawImage(this.image, sx, sy, cropSize, cropSize, 0, 0, size, size);
-    ctx.restore();
 
-    const rim = ctx.createRadialGradient(size / 2, size / 2, size * 0.15, size / 2, size / 2, size / 2);
-    rim.addColorStop(0.8, "rgba(255,255,255,0)");
-    rim.addColorStop(1, "rgba(255,255,255,0.55)");
-    ctx.fillStyle = rim;
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
-    ctx.fill();
+    // Важно: больше не вырезаем лицо агрессивным кропом.
+    // Масштабируем всю картинку внутрь круга, чтобы голова не обрезалась.
+    const padding = 4;
+    const scale = Math.min((size - padding * 2) / iw, (size - padding * 2) / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    const dx = (size - dw) / 2;
+    const dy = (size - dh) / 2;
+    ctx.drawImage(this.image, dx, dy, dw, dh);
+    ctx.restore();
 
     this.canvas = buffer;
     this.ready = true;
@@ -601,42 +618,93 @@ class Player {
 
     this.drawLegLimb(ctx, legs[1], false);
     this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 4, -50 + pelvisBob * 0.2, 22);
+    this.drawHead(ctx, 5, -56 + pelvisBob * 0.2, 24);
   }
 
   drawSlideFigure(ctx) {
     const h = this.height;
     const floorY = h / 2 - 2;
 
-    const bodyAngle = degToRad(14);
-    const bodyCx = 7;
-    const bodyCy = 1;
-
-    const backArm = { shoulderX: -22, shoulderY: -6, elbowX: -38, elbowY: 1, handX: -48, handY: 8 };
-    const frontArm = { shoulderX: 8, shoulderY: -5, elbowX: 24, elbowY: 0, handX: 39, handY: 6 };
-    const backLeg = { hipX: -14, hipY: 15, kneeX: -2, kneeY: 25, ankleX: 20, ankleY: floorY - 1 };
-    const frontLeg = { hipX: 7, hipY: 15, kneeX: 29, kneeY: 21, ankleX: 50, ankleY: floorY - 3 };
-
     ctx.save();
-    ctx.globalAlpha = 0.32;
+    ctx.globalAlpha = 0.28;
     ctx.fillStyle = "#7baed7";
     ctx.beginPath();
-    ctx.ellipse(-18, floorY + 2, 42, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-14, floorY + 2, 46, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    this.drawArmLimb(ctx, backArm, true);
-    this.drawLegLimb(ctx, backLeg, true);
+    // Низкая цельная поза скольжения: тело не рассыпается на отдельные куски.
+    ctx.save();
+    ctx.translate(5, -2);
+    ctx.rotate(degToRad(-16));
+
+    // задняя рука вдоль корпуса
+    ctx.strokeStyle = "#254f78";
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-20, 0);
+    ctx.lineTo(-42, 9);
+    ctx.stroke();
+
+    // задняя нога под корпусом
+    ctx.strokeStyle = "#1c4368";
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(-20, 16);
+    ctx.lineTo(-42, 24);
+    ctx.lineTo(-22, 28);
+    ctx.stroke();
+
+    // корпус как единая капсула
+    roundedRectPath(ctx, -32, -15, 64, 30, 15);
+    const shirt = ctx.createLinearGradient(-32, -15, 32, 15);
+    shirt.addColorStop(0, "#102b44");
+    shirt.addColorStop(1, "#17466c");
+    ctx.fillStyle = shirt;
+    ctx.fill();
 
     ctx.save();
-    ctx.translate(bodyCx, bodyCy);
-    ctx.rotate(bodyAngle);
-    this.drawTorso(ctx, -19, 35);
+    ctx.clip();
+    ctx.globalAlpha = 0.16;
+    ctx.strokeStyle = "#7cb0df";
+    ctx.lineWidth = 1;
+    for (let x = -28; x <= 30; x += 7) {
+      ctx.beginPath();
+      ctx.moveTo(x, -17);
+      ctx.lineTo(x, 17);
+      ctx.stroke();
+    }
+    for (let y = -12; y <= 14; y += 6) {
+      ctx.beginPath();
+      ctx.moveTo(-34, y);
+      ctx.lineTo(34, y);
+      ctx.stroke();
+    }
     ctx.restore();
 
-    this.drawLegLimb(ctx, frontLeg, false);
-    this.drawArmLimb(ctx, frontArm, false);
-    this.drawHead(ctx, 42, -30, 21);
+    // передняя рука рядом с корпусом
+    ctx.strokeStyle = "#1d5684";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(8, -5);
+    ctx.lineTo(28, 2);
+    ctx.lineTo(42, 8);
+    ctx.stroke();
+
+    // передняя нога вытянута низко по направлению движения
+    ctx.strokeStyle = "#173f63";
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(2, 16);
+    ctx.lineTo(24, 24);
+    ctx.lineTo(52, 22);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Голова отдельно спереди и выше корпуса, без белой обводки и без обрезания.
+    this.drawHead(ctx, 43, -31, 24);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
@@ -1216,16 +1284,20 @@ class Game {
     this.teaCount = 0;
     this.playerNameInput = document.getElementById("playerNameInput");
     this.leaderboardList = document.getElementById("leaderboardList");
-    this.playerName = localStorage.getItem(PLAYER_NAME_KEY) || "Игрок";
+    this.leaderboardStatus = document.getElementById("leaderboardStatus");
+    this.playerName = normalizePlayerName(localStorage.getItem(PLAYER_NAME_KEY) || "Игрок");
+    this.leaderboardRows = this.loadLocalLeaderboard();
+    this.leaderboardRef = null;
+    this.firebaseReady = false;
     if (this.playerNameInput) {
       this.playerNameInput.value = this.playerName;
       this.playerNameInput.addEventListener("input", () => {
-        const name = this.playerNameInput.value.trim() || "Игрок";
-        this.playerName = name.slice(0, 18);
+        this.playerName = normalizePlayerName(this.playerNameInput.value);
         localStorage.setItem(PLAYER_NAME_KEY, this.playerName);
       });
     }
     this.updateLeaderboardUI();
+    this.initOnlineLeaderboard();
 
     this.onResize();
     window.addEventListener("resize", this.onResize.bind(this));
@@ -1294,7 +1366,7 @@ class Game {
     this.saveBest();
   }
 
-  loadLeaderboard() {
+  loadLocalLeaderboard() {
     try {
       const raw = localStorage.getItem(LEADERBOARD_KEY);
       const data = raw ? JSON.parse(raw) : [];
@@ -1304,13 +1376,67 @@ class Game {
     }
   }
 
-  saveLeaderboard(rows) {
+  saveLocalLeaderboard(rows) {
     localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(rows.slice(0, 10)));
+  }
+
+  setLeaderboardStatus(text) {
+    if (this.leaderboardStatus) this.leaderboardStatus.textContent = text;
+  }
+
+  initOnlineLeaderboard() {
+    try {
+      if (!window.firebase || !window.firebase.database) {
+        this.setLeaderboardStatus("Локальная таблица: Firebase SDK не загрузился");
+        return;
+      }
+
+      if (!window.firebase.apps || !window.firebase.apps.length) {
+        window.firebase.initializeApp(FIREBASE_CONFIG);
+      }
+
+      this.leaderboardRef = window.firebase.database().ref(LEADERBOARD_PATH);
+      this.firebaseReady = true;
+      this.setLeaderboardStatus("Онлайн-таблица подключается...");
+
+      this.leaderboardRef
+        .orderByChild("score")
+        .limitToLast(10)
+        .on(
+          "value",
+          (snapshot) => {
+            const rows = [];
+            snapshot.forEach((child) => {
+              const row = child.val() || {};
+              rows.push({
+                name: normalizePlayerName(row.name),
+                score: Number(row.score || 0),
+                tea: Number(row.tea || 0),
+                date: row.date || "",
+              });
+            });
+            rows.sort((a, b) => b.score - a.score);
+            this.leaderboardRows = rows.slice(0, 10);
+            this.saveLocalLeaderboard(this.leaderboardRows);
+            this.updateLeaderboardUI();
+            this.setLeaderboardStatus("Общая онлайн-таблица лидеров");
+          },
+          () => {
+            this.firebaseReady = false;
+            this.setLeaderboardStatus("Нет доступа к Firebase, показана локальная таблица");
+            this.leaderboardRows = this.loadLocalLeaderboard();
+            this.updateLeaderboardUI();
+          }
+        );
+    } catch {
+      this.firebaseReady = false;
+      this.setLeaderboardStatus("Нет подключения к онлайн-таблице, показана локальная таблица");
+    }
   }
 
   updateLeaderboardUI() {
     if (!this.leaderboardList) return;
-    const rows = this.loadLeaderboard().sort((a, b) => b.score - a.score).slice(0, 10);
+    const rows = (this.leaderboardRows || []).sort((a, b) => b.score - a.score).slice(0, 10);
     if (!rows.length) {
       this.leaderboardList.innerHTML = '<li class="leaderboard-empty">Пока нет результатов</li>';
       return;
@@ -1318,7 +1444,7 @@ class Game {
 
     this.leaderboardList.innerHTML = rows
       .map((row, index) => {
-        const name = String(row.name || "Игрок").replace(/[<>&]/g, "");
+        const name = escapeHtml(normalizePlayerName(row.name));
         const score = Number(row.score || 0);
         return `<li><span>${index + 1}. ${name}</span><strong>${score}</strong></li>`;
       })
@@ -1331,20 +1457,32 @@ class Game {
       localStorage.setItem(STORAGE_KEY, String(this.best));
     }
 
-    const name = (this.playerNameInput && this.playerNameInput.value.trim()) || this.playerName || "Игрок";
-    this.playerName = name.slice(0, 18);
+    const inputName = this.playerNameInput && this.playerNameInput.value;
+    this.playerName = normalizePlayerName(inputName || this.playerName || "Игрок");
     localStorage.setItem(PLAYER_NAME_KEY, this.playerName);
 
-    const rows = this.loadLeaderboard();
-    rows.push({
+    const result = {
       name: this.playerName,
-      score: this.score,
-      tea: this.teaCount,
+      score: Number(this.score || 0),
+      tea: Number(this.teaCount || 0),
       date: new Date().toISOString(),
-    });
-    rows.sort((a, b) => b.score - a.score);
-    this.saveLeaderboard(rows);
-    this.updateLeaderboardUI();
+    };
+
+    const localRows = this.loadLocalLeaderboard();
+    localRows.push(result);
+    localRows.sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+    this.saveLocalLeaderboard(localRows);
+
+    if (this.firebaseReady && this.leaderboardRef) {
+      this.leaderboardRef.push(result).catch(() => {
+        this.setLeaderboardStatus("Результат сохранён локально, но не отправился онлайн");
+        this.leaderboardRows = localRows.slice(0, 10);
+        this.updateLeaderboardUI();
+      });
+    } else {
+      this.leaderboardRows = localRows.slice(0, 10);
+      this.updateLeaderboardUI();
+    }
   }
 
   collectTea(index) {
