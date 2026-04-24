@@ -4,7 +4,7 @@ const CONFIG = {
   gravity: 2160,
   jumpForce: 790,
   baseSpeed: 300,
-  speedGrowth: 4.9,
+  speedGrowth: 5.35,
   obstacleFrequency: 0.96,
   maxDt: 0.033,
   groundHeight: 96,
@@ -1799,7 +1799,7 @@ class Game {
 
     if (!this.isRidingCart()) {
       for (const obs of this.obstacles.items) {
-        if (this.intersectsObstacle(this.player.getBounds(), obs.getBounds())) {
+        if (this.intersectsObstacle(this.player.getBounds(), obs.getBounds(), obs)) {
           this.takeDamage();
           break;
         }
@@ -1814,7 +1814,7 @@ class Game {
     return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
   }
 
-  intersectsObstacle(a, b) {
+  intersectsObstacle(a, b, obstacle = null) {
     const left = Math.max(a.x, b.x);
     const right = Math.min(a.x + a.width, b.x + b.width);
     const top = Math.max(a.y, b.y);
@@ -1824,8 +1824,17 @@ class Game {
 
     if (overlapX <= 10 || overlapY <= 10) return false;
 
+    const needsSlide = obstacle && obstacle.type && obstacle.type.behavior === "duck";
+    if (needsSlide) {
+      // Верхние листы должны быть опасными всегда, кроме реального скольжения.
+      if (this.player.ducking && this.player.grounded) return false;
+      return overlapX > 8 && overlapY > 8;
+    }
+
     const playerFeet = a.y + a.height;
     const obstacleTop = b.y;
+    // Для нижних препятствий оставляем мягкую проверку: если персонаж явно перелетел верх,
+    // удар не засчитывается из-за пары пикселей пересечения хитбоксов.
     if (!this.player.grounded && playerFeet <= obstacleTop + 12) return false;
 
     return true;
