@@ -29,6 +29,7 @@ const CONFIG = {
 const STORAGE_KEY = "gip-runner-best";
 const LEADERBOARD_KEY = "gip-runner-leaderboard";
 const PLAYER_NAME_KEY = "gip-runner-player-name";
+const CHARACTER_STORAGE_KEY = "gip-runner-character";
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDjs3ZU1vPYraihsEUhHdC_yGKGVBXfZN8",
   authDomain: "runner-bb9a8.firebaseapp.com",
@@ -39,6 +40,21 @@ const FIREBASE_CONFIG = {
   appId: "1:36209569924:web:f44e0b9bf1c3c818b492d1"
 };
 const LEADERBOARD_PATH = "leaderboard";
+
+const CHARACTERS = [
+  {
+    id: "gip",
+    name: "ГИП",
+    description: "Основной персонаж",
+    path: "assets/characters/gip",
+    preview: "assets/characters/gip/preview.png",
+  },
+];
+
+function getCharacterById(id) {
+  return CHARACTERS.find((character) => character.id === id) || CHARACTERS[0];
+}
+
 
 const RUN_LEG_CYCLE = [
   { t: 0.0, x: 22, y: 0, foot: -4 },
@@ -151,29 +167,46 @@ function normalizePlayerName(value) {
     .slice(0, 18) || "Игрок";
 }
 
-function leaderboardNameKey(value) {
-  return normalizePlayerName(value)
+function isTypingTarget(target) {
+  if (!target) return false;
+  if (typeof target.closest === "function" && target.closest("input, textarea, [contenteditable='true']")) {
+    return true;
+  }
+  const tag = String(target.tagName || "").toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable === true;
+}
+
+function leaderboardNameKey(name) {
+  const safe = normalizePlayerName(name)
     .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[.#$\[\]\/]/g, "_")
-    .slice(0, 32) || "igrok";
+    .replace(/[^a-zа-яё0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return safe || "player";
 }
 
 function mergeLeaderboardRows(rows) {
-  const map = new Map();
-  for (const raw of Array.isArray(rows) ? rows : []) {
-    const name = normalizePlayerName(raw && raw.name);
-    const score = Number((raw && raw.score) || 0);
-    const tea = Number((raw && raw.tea) || 0);
-    const date = raw && raw.date ? String(raw.date) : "";
-    const key = name.toLowerCase();
-    const existing = map.get(key);
-    if (!existing || score > existing.score || (score === existing.score && date > existing.date)) {
-      map.set(key, { name, score, tea, date });
+  const bestByName = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const normalized = normalizePlayerName(row && row.name);
+    const candidate = {
+      name: normalized,
+      score: Number((row && row.score) || 0),
+      tea: Number((row && row.tea) || 0),
+      date: row && row.date ? String(row.date) : "",
+    };
+    const key = normalized.toLowerCase();
+    const current = bestByName.get(key);
+    if (!current || candidate.score > current.score || (candidate.score === current.score && candidate.tea > current.tea) || (candidate.score === current.score && candidate.tea === current.tea && candidate.date > current.date)) {
+      bestByName.set(key, candidate);
     }
   }
-  return Array.from(map.values()).sort((a, b) => b.score - a.score || String(b.date).localeCompare(String(a.date)));
+  return Array.from(bestByName.values()).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.tea !== a.tea) return b.tea - a.tea;
+    return String(b.date || "").localeCompare(String(a.date || ""));
+  });
 }
+
 
 class AudioEngine {
   constructor() {
@@ -417,11 +450,7 @@ class Player {
 
   startSlide() {
     if (!this.grounded) return;
-    if (this.ducking) {
-      this.slideTimer = Math.max(this.slideTimer, 0.42);
-      return;
-    }
-    if (this.slideCooldown > 0) return;
+    if (this.ducking || this.slideCooldown > 0) return;
     this.ducking = true;
     this.slideTimer = 0.62;
     this.height = this.slideHeight;
@@ -641,13 +670,13 @@ class Player {
     this.drawLegLimb(ctx, legs[0], true);
 
     ctx.save();
-    ctx.rotate(degToRad(8));
+    ctx.rotate(degToRad(9));
     this.drawTorso(ctx, torsoTop, torsoHeight);
     ctx.restore();
 
     this.drawLegLimb(ctx, legs[1], false);
     this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 2, -48 + pelvisBob * 0.12, 22);
+    this.drawHead(ctx, 4, -56 + pelvisBob * 0.15, 23);
   }
 
   drawSlideFigure(ctx) {
@@ -658,38 +687,38 @@ class Player {
     ctx.globalAlpha = 0.2;
     ctx.fillStyle = "#7baed7";
     ctx.beginPath();
-    ctx.ellipse(-8, floorY + 2, 42, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-8, floorY + 2, 44, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // Компактная, чистая поза скольжения без визуальной каши.
+    // Компактная цельная поза скольжения: без визуальной каши.
     ctx.save();
-    ctx.translate(-2, 0);
-    ctx.rotate(degToRad(5));
+    ctx.translate(0, 1);
+    ctx.rotate(degToRad(8));
 
-    // Задняя нога под телом
+    // задняя нога компактно под телом
     ctx.strokeStyle = "#22486e";
     ctx.lineWidth = 8;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(-12, 12);
-    ctx.lineTo(-22, 18);
-    ctx.lineTo(-14, 25);
+    ctx.moveTo(-14, 13);
+    ctx.lineTo(-22, 20);
+    ctx.lineTo(-10, 25);
     ctx.stroke();
 
-    // Задняя рука вдоль корпуса
+    // задняя рука близко к телу
     ctx.strokeStyle = "#25547e";
     ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(-14, -2);
-    ctx.lineTo(-24, 1);
-    ctx.lineTo(-31, 5);
+    ctx.moveTo(-16, -2);
+    ctx.lineTo(-24, 2);
+    ctx.lineTo(-33, 7);
     ctx.stroke();
 
-    // Корпус
-    roundedRectPath(ctx, -26, -14, 58, 28, 13);
-    const shirt = ctx.createLinearGradient(-26, -14, 32, 14);
+    // корпус
+    roundedRectPath(ctx, -28, -14, 60, 28, 13);
+    const shirt = ctx.createLinearGradient(-28, -14, 32, 14);
     shirt.addColorStop(0, "#102b44");
     shirt.addColorStop(1, "#17466c");
     ctx.fillStyle = shirt;
@@ -700,7 +729,7 @@ class Player {
     ctx.globalAlpha = 0.16;
     ctx.strokeStyle = "#7cb0df";
     ctx.lineWidth = 1;
-    for (let x = -23; x <= 28; x += 7) {
+    for (let x = -25; x <= 28; x += 7) {
       ctx.beginPath();
       ctx.moveTo(x, -16);
       ctx.lineTo(x, 16);
@@ -708,34 +737,34 @@ class Player {
     }
     for (let y = -10; y <= 12; y += 6) {
       ctx.beginPath();
-      ctx.moveTo(-28, y);
+      ctx.moveTo(-30, y);
       ctx.lineTo(34, y);
       ctx.stroke();
     }
     ctx.restore();
 
-    // Передняя рука вытянута вперёд
+    // передняя рука вытянута вперёд низко
     ctx.strokeStyle = "#1d5684";
     ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.moveTo(8, -1);
-    ctx.lineTo(20, 1);
-    ctx.lineTo(30, 4);
+    ctx.moveTo(8, -2);
+    ctx.lineTo(20, 0);
+    ctx.lineTo(31, 3);
     ctx.stroke();
 
-    // Передняя нога почти вдоль пола
+    // передняя нога длинная, почти вдоль пола
     ctx.strokeStyle = "#173f63";
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(4, 13);
-    ctx.lineTo(18, 17);
-    ctx.lineTo(34, 17);
+    ctx.moveTo(2, 13);
+    ctx.lineTo(20, 18);
+    ctx.lineTo(39, 18);
     ctx.stroke();
 
     ctx.restore();
 
-    // Голова ближе к телу и шее.
-    this.drawHead(ctx, 3, -22, 21);
+    // Голова ближе к шее и корпусу.
+    this.drawHead(ctx, 10, -28, 21);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
@@ -810,6 +839,10 @@ class Player {
   }
 
   drawHead(ctx, cx, cy, headRadius = 22) {
+    ctx.fillStyle = "#d6a787";
+    roundedRectPath(ctx, cx - 6, cy + headRadius - 4, 12, 13, 5);
+    ctx.fill();
+
     if (this.usePhoto) {
       this.drawPhotoHead(ctx, cx, cy, headRadius);
     } else {
@@ -901,20 +934,20 @@ class Obstacle {
 
   drawPaperRevision(ctx, x, y, number, scale = 1) {
     const label = `Изм ${number}`;
-    const fontSize = Math.max(10, Math.round(11.5 * scale));
+    const fontSize = Math.max(8, Math.round(8.5 * scale));
     ctx.save();
     ctx.font = `700 ${fontSize}px Arial`;
-    const width = Math.ceil(ctx.measureText(label).width) + 10;
-    const height = fontSize + 6;
-    ctx.fillStyle = "rgba(255, 235, 129, 1)";
-    ctx.strokeStyle = "#8f4c00";
-    ctx.lineWidth = 1.2;
+    const width = Math.ceil(ctx.measureText(label).width) + 8;
+    const height = fontSize + 4;
+    ctx.fillStyle = "rgba(255, 244, 183, 0.98)";
+    ctx.strokeStyle = "#c18b00";
+    ctx.lineWidth = 1;
     roundedRectPath(ctx, x - 2, y - 1, width, height, 4);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = "#7a1f10";
     ctx.textBaseline = "top";
-    ctx.fillText(label, x + 3, y + 2);
+    ctx.fillText(label, x + 2, y + 1);
     ctx.restore();
   }
 
@@ -933,7 +966,7 @@ class Obstacle {
       for (let y = 16; y < this.height - 8; y += 7) {
         ctx.fillRect(6, y, this.width - 22, 1.2);
       }
-      this.drawPaperRevision(ctx, 6, 10, this.paperLabels[i] || 1, 1.05);
+      this.drawPaperRevision(ctx, 6, 11, this.paperLabels[i] || 1, 1.02);
       ctx.restore();
     }
   }
@@ -956,7 +989,7 @@ class Obstacle {
       for (let y = 10; y < 20; y += 5) {
         ctx.fillRect(5, y, 20, 1.2);
       }
-      this.drawPaperRevision(ctx, 2, 2, this.paperLabels[i] || 1, 0.9);
+      this.drawPaperRevision(ctx, 4, 3, this.paperLabels[i] || 1, 0.92);
       ctx.beginPath();
       ctx.moveTo(25, 0);
       ctx.lineTo(34, 9);
@@ -1208,6 +1241,134 @@ class TeaManager {
   }
 }
 
+
+class SpriteSet {
+  constructor(images) {
+    this.images = images || {};
+  }
+
+  get(name) {
+    return this.images[name] || null;
+  }
+
+  isReady() {
+    return Object.keys(this.images).length > 0;
+  }
+}
+
+function loadImage(path, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => finish(null), timeoutMs);
+    img.decoding = "async";
+    img.onload = () => {
+      window.clearTimeout(timer);
+      finish(img);
+    };
+    img.onerror = () => {
+      window.clearTimeout(timer);
+      finish(null);
+    };
+    img.src = path;
+  });
+}
+
+function loadPlayerSprites(characterId = CHARACTERS[0].id) {
+  const character = getCharacterById(characterId);
+  const names = ["run1", "run2", "run3", "run4", "jump", "land", "slide", "hurt"];
+  return Promise.all(
+    names.map((name) => loadImage(`${character.path}/${name}.png`).then((image) => [name, image]))
+  ).then((entries) => {
+    const images = {};
+    for (const [name, image] of entries) {
+      if (image) images[name] = image;
+    }
+    return new SpriteSet(images);
+  });
+}
+
+const __originalPlayerDraw = Player.prototype.draw;
+
+Player.prototype.getSpriteFrameName = function () {
+  if (this.ducking && this.grounded) return "slide";
+  if (!this.grounded) return this.vy < 120 ? "jump" : "land";
+  const frames = ["run1", "run2", "run3", "run4"];
+  const phase = wrap01(this.runTime * 0.95);
+  const index = Math.floor(phase * frames.length) % frames.length;
+  return frames[index];
+};
+
+Player.prototype.draw = function (ctx) {
+  const spriteSet = this.spriteSet;
+  if (!spriteSet || !spriteSet.isReady()) {
+    __originalPlayerDraw.call(this, ctx);
+    return;
+  }
+
+  const frameName = this.getSpriteFrameName();
+  const sprite = spriteSet.get(frameName);
+  if (!sprite) {
+    __originalPlayerDraw.call(this, ctx);
+    return;
+  }
+
+  const groundY = this.game.groundY;
+  const centerX = this.x + this.width * 0.5;
+  const airborne = !this.grounded;
+  const descending = airborne && this.vy >= 120;
+  const sliding = this.ducking && this.grounded;
+  const runBob = this.grounded && !sliding ? Math.sin(this.runTime * 10) * 2.5 : 0;
+
+  let drawH = 132;
+  let xOffset = 0;
+  let yOffset = 0;
+
+  if (sliding) {
+    drawH = 72;
+    xOffset = -12;
+    yOffset = 2;
+  } else if (airborne && !descending) {
+    drawH = 128;
+    yOffset = -16;
+  } else if (descending) {
+    drawH = 102;
+    xOffset = 2;
+    yOffset = -2;
+  }
+
+  const aspect = sprite.naturalWidth / Math.max(1, sprite.naturalHeight);
+  const drawW = drawH * aspect;
+  const drawX = centerX - drawW * 0.5 + xOffset;
+  const drawY = groundY - drawH + yOffset + runBob;
+
+  ctx.save();
+
+  const shadowAlpha = this.grounded ? 0.16 : clamp(0.12 - Math.abs(this.vy) / 9000, 0.05, 0.12);
+  ctx.fillStyle = `rgba(35, 64, 92, ${shadowAlpha})`;
+  ctx.beginPath();
+  ctx.ellipse(centerX + (sliding ? 6 : 0), groundY - 4, sliding ? 42 : 30, sliding ? 7 : 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (this.landingDust > 0) {
+    ctx.globalAlpha = this.landingDust * 0.30;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(centerX - 28 - (1 - this.landingDust) * 10, groundY - 6, 10, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(centerX + 26 + (1 - this.landingDust) * 10, groundY - 5, 9, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+  ctx.restore();
+};
+
 class InputController {
   constructor(game) {
     this.game = game;
@@ -1230,35 +1391,28 @@ class InputController {
     window.addEventListener("keydown", (e) => {
       if (isTypingTarget(e.target)) return;
 
-      const code = e.code;
-      const isJump = code === "Space" || code === "ArrowUp";
-      const isSlide = code === "ArrowDown" || code === "KeyS";
-      const isRestart = code === "Enter";
-
-      if (isJump || isSlide || isRestart) e.preventDefault();
-
-      if (isRestart && (this.game.state === "gameover" || this.game.state === "win")) {
-        this.game.restart();
-        return;
+      if (["Space", "ArrowUp", "ArrowDown", "Enter"].includes(e.code)) {
+        e.preventDefault();
       }
 
-      if (isJump) {
+      if (["Space", "ArrowUp"].includes(e.code)) {
         this.game.userGesture();
         if (this.restartIfEnded()) return;
-        this.game.start();
+        if (!this.game.start()) return;
         this.game.player.jump();
-        return;
       }
 
-      if (isSlide) {
+      if (e.code === "ArrowDown") {
         this.game.userGesture();
-        if (this.restartIfEnded()) return;
-        this.game.start();
+        if (!this.game.start()) return;
         this.game.player.startSlide();
-        return;
       }
 
-      if (code === "KeyP") {
+      if (e.code === "Enter" && (this.game.state === "gameover" || this.game.state === "win")) {
+        this.game.restart();
+      }
+
+      if (e.code === "KeyP") {
         this.game.togglePause();
       }
     });
@@ -1270,7 +1424,7 @@ class InputController {
     const onTap = () => {
       this.game.userGesture();
       if (this.restartIfEnded()) return;
-      this.game.start();
+      if (!this.game.start()) return;
       this.game.player.jump();
     };
 
@@ -1284,7 +1438,7 @@ class InputController {
       const delta = e.clientY - this.touchStartY;
       if (delta > 38) {
         this.game.userGesture();
-        this.game.start();
+        if (!this.game.start()) return;
         this.game.player.startSlide();
         this.touchStartY = null;
       }
@@ -1301,7 +1455,7 @@ class InputController {
     duckBtn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       this.game.userGesture();
-      this.game.start();
+      if (!this.game.start()) return;
       this.game.player.startSlide();
     });
   }
@@ -1348,7 +1502,7 @@ class Game {
     this.teaManager = new TeaManager(this);
     this.input = new InputController(this);
 
-    this.state = "ready";
+    this.state = "select";
     this.time = 0;
     this.lastFrame = performance.now();
     this.distance = 0;
@@ -1368,6 +1522,9 @@ class Game {
     this.leaderboardRows = this.loadLocalLeaderboard();
     this.leaderboardRef = null;
     this.firebaseReady = false;
+    this.characterStatus = document.getElementById("characterStatus");
+    this.characterGrid = document.getElementById("characterGrid");
+    this.currentCharacterId = localStorage.getItem(CHARACTER_STORAGE_KEY) || CHARACTERS[0].id;
     if (this.playerNameInput) {
       this.playerNameInput.value = this.playerName;
       this.playerNameInput.addEventListener("input", () => {
@@ -1377,11 +1534,71 @@ class Game {
     }
     this.updateLeaderboardUI();
     this.initOnlineLeaderboard();
+    this.setupCharacterSelect();
 
     this.onResize();
     window.addEventListener("resize", this.onResize.bind(this));
 
     requestAnimationFrame(this.loop.bind(this));
+  }
+
+  setCharacterStatus(text) {
+    if (this.characterStatus) this.characterStatus.textContent = text;
+  }
+
+  setupCharacterSelect() {
+    if (!this.characterGrid) return;
+
+    this.characterGrid.innerHTML = CHARACTERS.map((character) => `
+      <button class="character-card" type="button" data-character-id="${character.id}">
+        <img src="${character.preview}" alt="${character.name}" loading="lazy" />
+        <span>
+          <strong>${character.name}</strong>
+          <span>${character.description}</span>
+        </span>
+      </button>
+    `).join("");
+
+    this.characterGrid.addEventListener("click", (event) => {
+      const card = event.target.closest(".character-card");
+      if (!card) return;
+      this.selectCharacter(card.dataset.characterId);
+    });
+
+    this.setCharacterStatus("Выбери персонажа перед стартом игры.");
+  }
+
+  updateCharacterCards(activeId, loadingId = null) {
+    if (!this.characterGrid) return;
+    this.characterGrid.querySelectorAll(".character-card").forEach((card) => {
+      const id = card.dataset.characterId;
+      card.classList.toggle("active", id === activeId);
+      card.classList.toggle("loading", id === loadingId);
+    });
+  }
+
+  selectCharacter(characterId) {
+    const character = getCharacterById(characterId);
+    this.currentCharacterId = character.id;
+    this.setCharacterStatus(`Загружается персонаж: ${character.name}...`);
+    this.updateCharacterCards(character.id, character.id);
+
+    loadPlayerSprites(character.id).then((spriteSet) => {
+      if (!spriteSet || !spriteSet.isReady()) {
+        this.setCharacterStatus("Не удалось загрузить спрайты персонажа. Проверь папку assets/characters/.");
+        this.updateCharacterCards(null, null);
+        return;
+      }
+
+      this.player.spriteSet = spriteSet;
+      localStorage.setItem(CHARACTER_STORAGE_KEY, character.id);
+      this.state = "ready";
+      this.updateCharacterCards(character.id, null);
+      this.setCharacterStatus(`Выбран персонаж: ${character.name}. Нажми Space или ↑ для старта.`);
+    }).catch(() => {
+      this.setCharacterStatus("Ошибка загрузки персонажа. Проверь структуру папок и имена PNG-файлов.");
+      this.updateCharacterCards(null, null);
+    });
   }
 
   userGesture() {
@@ -1401,7 +1618,15 @@ class Game {
   }
 
   start() {
-    if (this.state === "ready") this.state = "running";
+    if (this.state === "select") {
+      this.drawOverlayText(ctx, "Выбери персонажа", "Перед началом игры нажми на карточку персонажа ниже игрового поля.", 0.92);
+    }
+
+    if (this.state === "ready") {
+      this.state = "running";
+      return true;
+    }
+    return this.state === "running";
   }
 
   restart() {
@@ -1782,41 +2007,7 @@ class Game {
   }
 }
 
-function loadPlayerPhoto(timeoutMs = 1800) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    let done = false;
-
-    const finish = (value) => {
-      if (done) return;
-      done = true;
-      resolve(value);
-    };
-
-    const timer = window.setTimeout(() => finish(null), timeoutMs);
-
-    img.decoding = "async";
-    img.onload = () => {
-      window.clearTimeout(timer);
-      finish(img);
-    };
-    img.onerror = () => {
-      window.clearTimeout(timer);
-      finish(null);
-    };
-    img.src = CONFIG.photo.path;
-  });
-}
-
 (function init() {
   const canvas = document.getElementById("gameCanvas");
-  const game = new Game(canvas, null);
-
-  loadPlayerPhoto().then((photo) => {
-    if (!photo) return;
-    const portraitTexture = new PortraitTexture(photo);
-    if (!portraitTexture.ready) return;
-    game.player.portraitTexture = portraitTexture;
-    game.player.usePhoto = true;
-  });
+  new Game(canvas, null);
 })();
