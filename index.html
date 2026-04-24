@@ -10,11 +10,14 @@
     <main class="app">
       <header class="hud">
         <h1>ГИП Runner</h1>
-        <p class="subtitle">Успей пережить рабочий день с 8:00 до 17:30. Чай замедляет темп и откатывает время назад.</p>
+        <p class="subtitle">
+          Переживи рабочий день с 8:00 до 17:30: перепрыгивай заказчиков и бумажные завалы,
+          пригибайся под летящими листами и лови чай, чтобы замедлить темп и откатить время назад.
+        </p>
       </header>
 
       <section class="game-shell" aria-label="Игровая область">
-        <canvas id="gameCanvas" width="960" height="360" aria-label="Photo Runner"></canvas>
+        <canvas id="gameCanvas" width="960" height="360" aria-label="ГИП Runner"></canvas>
 
         <div class="controls" role="group" aria-label="Кнопки управления">
           <button id="pauseBtn" class="btn" type="button">Пауза</button>
@@ -30,8 +33,10 @@
           <li><kbd>↓</kbd> / <kbd>S</kbd> — пригнуться</li>
           <li>Тап по экрану — прыжок</li>
           <li>Свайп вниз или кнопка <strong>Duck</strong> — пригнуться</li>
-          <li>Кружка чая — замедляет разгон и откатывает рабочее время примерно на 1 час игрового дня</li>
-          <li>Доживи до 17:30 или перезапусти после столкновения: <kbd>Enter</kbd> / <kbd>Space</kbd> / тап</li>
+          <li>Летящие листы — препятствие для пригибания</li>
+          <li>Заказчики и стопки бумаги — препятствия для прыжка</li>
+          <li>Кружка чая — замедляет игру и откатывает рабочее время назад</li>
+          <li><kbd>Enter</kbd> / <kbd>Space</kbd> / тап после поражения или победы — рестарт</li>
         </ul>
       </section>
     </main>
