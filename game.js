@@ -151,6 +151,37 @@ function normalizePlayerName(value) {
     .slice(0, 18) || "Игрок";
 }
 
+
+function leaderboardNameKey(value) {
+  return normalizePlayerName(value)
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[.#$\[\]\/]/g, "_")
+    .slice(0, 32) || "igrok";
+}
+
+function mergeLeaderboardRows(rows) {
+  const map = new Map();
+  for (const raw of Array.isArray(rows) ? rows : []) {
+    const name = normalizePlayerName(raw && raw.name);
+    const score = Number((raw && raw.score) || 0);
+    const tea = Number((raw && raw.tea) || 0);
+    const date = raw && raw.date ? String(raw.date) : "";
+    const key = name.toLowerCase();
+    const existing = map.get(key);
+    if (!existing || score > existing.score || (score === existing.score && date > existing.date)) {
+      map.set(key, { name, score, tea, date });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.score - a.score || String(b.date).localeCompare(String(a.date)));
+}
+
+function isTypingTarget(target) {
+  if (!target) return false;
+  const tag = String(target.tagName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || !!target.isContentEditable;
+}
+
 class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -1193,18 +1224,20 @@ class InputController {
 
   bindKeyboard() {
     window.addEventListener("keydown", (e) => {
-      if (["Space", "ArrowUp", "KeyW", "ArrowDown", "KeyS", "Enter"].includes(e.code)) {
+      if (isTypingTarget(e.target)) return;
+
+      if (["Space", "ArrowUp", "ArrowDown", "Enter"].includes(e.code)) {
         e.preventDefault();
       }
 
-      if (["Space", "ArrowUp", "KeyW"].includes(e.code)) {
+      if (["Space", "ArrowUp"].includes(e.code)) {
         this.game.userGesture();
         if (this.restartIfEnded()) return;
         this.game.start();
         this.game.player.jump();
       }
 
-      if (["ArrowDown", "KeyS"].includes(e.code)) {
+      if (e.code === "ArrowDown") {
         this.game.userGesture();
         this.game.start();
         this.game.player.startSlide();
