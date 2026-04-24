@@ -637,13 +637,13 @@ class Player {
     this.drawLegLimb(ctx, legs[0], true);
 
     ctx.save();
-    ctx.rotate(degToRad(9));
+    ctx.rotate(degToRad(8));
     this.drawTorso(ctx, torsoTop, torsoHeight);
     ctx.restore();
 
     this.drawLegLimb(ctx, legs[1], false);
     this.drawArmLimb(ctx, arms[1], false);
-    this.drawHead(ctx, 4, -56 + pelvisBob * 0.15, 23);
+    this.drawHead(ctx, 2, -51 + pelvisBob * 0.12, 22.5);
   }
 
   drawSlideFigure(ctx) {
@@ -654,38 +654,38 @@ class Player {
     ctx.globalAlpha = 0.2;
     ctx.fillStyle = "#7baed7";
     ctx.beginPath();
-    ctx.ellipse(-8, floorY + 2, 44, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-8, floorY + 2, 42, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // Компактная цельная поза скольжения: без визуальной каши.
+    // Компактная, чистая поза скольжения без визуальной каши.
     ctx.save();
-    ctx.translate(0, 1);
-    ctx.rotate(degToRad(8));
+    ctx.translate(-2, 0);
+    ctx.rotate(degToRad(5));
 
-    // задняя нога компактно под телом
+    // Задняя нога под телом
     ctx.strokeStyle = "#22486e";
     ctx.lineWidth = 8;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.moveTo(-14, 13);
-    ctx.lineTo(-22, 20);
-    ctx.lineTo(-10, 25);
+    ctx.moveTo(-12, 12);
+    ctx.lineTo(-22, 18);
+    ctx.lineTo(-14, 25);
     ctx.stroke();
 
-    // задняя рука близко к телу
+    // Задняя рука вдоль корпуса
     ctx.strokeStyle = "#25547e";
     ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(-16, -2);
-    ctx.lineTo(-24, 2);
-    ctx.lineTo(-33, 7);
+    ctx.moveTo(-14, -2);
+    ctx.lineTo(-24, 1);
+    ctx.lineTo(-31, 5);
     ctx.stroke();
 
-    // корпус
-    roundedRectPath(ctx, -28, -14, 60, 28, 13);
-    const shirt = ctx.createLinearGradient(-28, -14, 32, 14);
+    // Корпус
+    roundedRectPath(ctx, -26, -14, 58, 28, 13);
+    const shirt = ctx.createLinearGradient(-26, -14, 32, 14);
     shirt.addColorStop(0, "#102b44");
     shirt.addColorStop(1, "#17466c");
     ctx.fillStyle = shirt;
@@ -696,7 +696,7 @@ class Player {
     ctx.globalAlpha = 0.16;
     ctx.strokeStyle = "#7cb0df";
     ctx.lineWidth = 1;
-    for (let x = -25; x <= 28; x += 7) {
+    for (let x = -23; x <= 28; x += 7) {
       ctx.beginPath();
       ctx.moveTo(x, -16);
       ctx.lineTo(x, 16);
@@ -704,34 +704,34 @@ class Player {
     }
     for (let y = -10; y <= 12; y += 6) {
       ctx.beginPath();
-      ctx.moveTo(-30, y);
+      ctx.moveTo(-28, y);
       ctx.lineTo(34, y);
       ctx.stroke();
     }
     ctx.restore();
 
-    // передняя рука вытянута вперёд низко
+    // Передняя рука вытянута вперёд
     ctx.strokeStyle = "#1d5684";
     ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.moveTo(8, -2);
-    ctx.lineTo(20, 0);
-    ctx.lineTo(31, 3);
+    ctx.moveTo(8, -1);
+    ctx.lineTo(20, 1);
+    ctx.lineTo(30, 4);
     ctx.stroke();
 
-    // передняя нога длинная, почти вдоль пола
+    // Передняя нога почти вдоль пола
     ctx.strokeStyle = "#173f63";
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.moveTo(2, 13);
-    ctx.lineTo(20, 18);
-    ctx.lineTo(39, 18);
+    ctx.moveTo(4, 13);
+    ctx.lineTo(18, 17);
+    ctx.lineTo(34, 17);
     ctx.stroke();
 
     ctx.restore();
 
-    // Голова ближе к шее и корпусу.
-    this.drawHead(ctx, 10, -28, 21);
+    // Голова ближе к телу и шее.
+    this.drawHead(ctx, 6, -25, 21);
   }
 
   drawTorso(ctx, torsoTop, torsoHeight) {
@@ -807,7 +807,7 @@ class Player {
 
   drawHead(ctx, cx, cy, headRadius = 22) {
     ctx.fillStyle = "#d6a787";
-    roundedRectPath(ctx, cx - 6, cy + headRadius - 4, 12, 13, 5);
+    roundedRectPath(ctx, cx - 4.5, cy + headRadius - 3, 9, 9, 4);
     ctx.fill();
 
     if (this.usePhoto) {
@@ -901,20 +901,20 @@ class Obstacle {
 
   drawPaperRevision(ctx, x, y, number, scale = 1) {
     const label = `Изм ${number}`;
-    const fontSize = Math.max(8, Math.round(8.5 * scale));
+    const fontSize = Math.max(10, Math.round(11.5 * scale));
     ctx.save();
     ctx.font = `700 ${fontSize}px Arial`;
-    const width = Math.ceil(ctx.measureText(label).width) + 8;
-    const height = fontSize + 4;
-    ctx.fillStyle = "rgba(255, 244, 183, 0.98)";
-    ctx.strokeStyle = "#c18b00";
-    ctx.lineWidth = 1;
+    const width = Math.ceil(ctx.measureText(label).width) + 10;
+    const height = fontSize + 6;
+    ctx.fillStyle = "rgba(255, 235, 129, 1)";
+    ctx.strokeStyle = "#8f4c00";
+    ctx.lineWidth = 1.2;
     roundedRectPath(ctx, x - 2, y - 1, width, height, 4);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = "#7a1f10";
     ctx.textBaseline = "top";
-    ctx.fillText(label, x + 2, y + 1);
+    ctx.fillText(label, x + 3, y + 2);
     ctx.restore();
   }
 
@@ -933,7 +933,7 @@ class Obstacle {
       for (let y = 16; y < this.height - 8; y += 7) {
         ctx.fillRect(6, y, this.width - 22, 1.2);
       }
-      this.drawPaperRevision(ctx, 6, 11, this.paperLabels[i] || 1, 1.02);
+      this.drawPaperRevision(ctx, 6, 10, this.paperLabels[i] || 1, 1.05);
       ctx.restore();
     }
   }
@@ -956,7 +956,7 @@ class Obstacle {
       for (let y = 10; y < 20; y += 5) {
         ctx.fillRect(5, y, 20, 1.2);
       }
-      this.drawPaperRevision(ctx, 4, 3, this.paperLabels[i] || 1, 0.92);
+      this.drawPaperRevision(ctx, 2, 2, this.paperLabels[i] || 1, 0.9);
       ctx.beginPath();
       ctx.moveTo(25, 0);
       ctx.lineTo(34, 9);
@@ -1230,7 +1230,7 @@ class InputController {
     window.addEventListener("keydown", (e) => {
       if (isTypingTarget(e.target)) return;
 
-      if (["Space", "ArrowUp", "ArrowDown", "Enter"].includes(e.code)) {
+      if (["Space", "ArrowUp", "ArrowDown", "Enter", "KeyS"].includes(e.code)) {
         e.preventDefault();
       }
 
@@ -1241,7 +1241,7 @@ class InputController {
         this.game.player.jump();
       }
 
-      if (e.code === "ArrowDown") {
+      if (e.code === "ArrowDown" || e.code === "KeyS") {
         this.game.userGesture();
         this.game.start();
         this.game.player.startSlide();
