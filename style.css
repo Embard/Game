@@ -498,3 +498,56 @@ kbd {
     flex: 1;
   }
 }
+
+.drag-duel-controls {
+  grid-template-columns: 1fr auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+  backdrop-filter: blur(6px);
+}
+
+.drag-help-card strong {
+  display: block;
+  color: #194776;
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.drag-help-card p {
+  margin: 0;
+  color: #4f6482;
+}
+
+.aim-readout {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 230px;
+}
+
+.aim-readout span {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.72);
+  color: #365a80;
+  font-weight: 800;
+}
+
+.archery-shell canvas {
+  touch-action: none;
+  cursor: crosshair;
+}
+
+@media (max-width: 920px) {
+  .drag-duel-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .aim-readout {
+    justify-content: flex-start;
+  }
+}
