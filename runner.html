@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ГИП Runner</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hud">
+        <h1>ГИП Runner</h1>
+        <p class="subtitle">
+          У тебя 3 сердца: перепрыгивай домики, скользи под летающими листами с изменениями,
+          собирай кружки и чайники с чаем для восстановления здоровья, а тележка даст
+          4 секунды защиты и позволит спокойно проехать через препятствия.
+        </p>
+      </header>
+
+      <section class="character-panel" aria-label="Выбор персонажа">
+        <div class="character-head">
+          <div>
+            <h2>Выбор персонажа</h2>
+            <p id="characterStatus">Выбери персонажа перед стартом игры.</p>
+          </div>
+        </div>
+        <div id="characterGrid" class="character-grid"></div>
+      </section>
+
+      <section class="game-shell" aria-label="Игровая область">
+        <canvas id="gameCanvas" width="1120" height="460" aria-label="ГИП Runner"></canvas>
+
+        <div class="controls" role="group" aria-label="Кнопки управления">
+          <button id="pauseBtn" class="btn" type="button">Пауза</button>
+          <button id="restartBtn" class="btn" type="button">Перезапуск</button>
+          <button id="fullscreenBtn" class="btn" type="button">Fullscreen</button>
+        </div>
+      </section>
+
+      <section class="leaderboard-panel" aria-label="Таблица лидеров">
+        <div class="leaderboard-head">
+          <div>
+            <h2>Таблица лидеров</h2>
+            <p id="leaderboardStatus">Общая онлайн-таблица лидеров загружается...</p>
+          </div>
+          <label class="player-name-label">
+            Имя игрока
+            <input id="playerNameInput" type="text" maxlength="18" placeholder="Игрок" />
+          </label>
+        </div>
+        <ol id="leaderboardList" class="leaderboard-list"></ol>
+      </section>
+
+      <section class="help">
+        <h2>Управление</h2>
+        <ul>
+          <li><kbd>Space</kbd> / <kbd>↑</kbd> — прыжок</li>
+          <li><kbd>↓</kbd> — скольжение</li>
+          <li>Перед стартом выбери персонажа в блоке выше</li>
+          <li>Для клавиатуры используются только пробел, Enter и стрелки</li>
+          <li>Тап по экрану — прыжок</li>
+          <li>Свайп вниз или кнопка <strong>Slide</strong> — скольжение</li>
+          <li>Нижние препятствия-домики нужно перепрыгивать</li>
+          <li>Верхние листы с изменениями нужно проходить скольжением</li>
+          <li>Кружка чая восстанавливает половину сердца и немного замедляет игру</li>
+          <li>Чайник чая восстанавливает одно сердце целиком и замедляет сильнее</li>
+          <li>Тележка даёт 4 секунды защиты: персонаж приседает на тележке, а таймер показывается внизу игрового поля</li>
+          <li>Столкновение снимает одно сердце. Когда сердца закончились — игра окончена</li>
+          <li><kbd>Enter</kbd> / <kbd>Space</kbd> / тап после поражения или победы — рестарт</li>
+        </ul>
+      </section>
+    </main>
+
+    <button id="duckBtn" class="duck-mobile" type="button" aria-label="Скольжение">Slide</button>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>
