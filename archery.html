@@ -52,24 +52,22 @@
         <canvas id="archeryCanvas" width="1120" height="520" aria-label="Дуэль из лука"></canvas>
       </section>
 
-      <section class="duel-controls" aria-label="Управление выстрелом">
-        <div class="range-control">
-          <label for="angleRange">Угол</label>
-          <input id="angleRange" type="range" min="8" max="72" value="38" />
-          <strong id="angleValue">38°</strong>
+      <section class="duel-controls drag-duel-controls" aria-label="Управление выстрелом">
+        <div class="drag-help-card">
+          <strong>Управление выстрелом</strong>
+          <p>Зажми мышку или палец на поле, оттяни назад от персонажа, выбери угол и отпусти для выстрела.</p>
         </div>
-        <div class="range-control">
-          <label for="powerRange">Сила</label>
-          <input id="powerRange" type="range" min="35" max="100" value="70" />
-          <strong id="powerValue">70%</strong>
+        <div class="aim-readout">
+          <span>Угол: <strong id="angleValue">—</strong></span>
+          <span>Сила: <strong id="powerValue">—</strong></span>
         </div>
-        <button id="shootBtn" class="btn shoot-btn" type="button">Выстрел</button>
       </section>
 
       <section class="help">
         <h2>Правила дуэли</h2>
         <ul>
           <li>Игра пошаговая: стреляет тот игрок, чей ход показан на экране.</li>
+          <li>Выстрел делается не ползунками: зажми поле, оттяни назад от персонажа и отпусти.</li>
           <li>Голова — максимальный урон, тело — средний, руки и ноги — меньший.</li>
           <li>Ветер меняется после каждого выстрела и влияет на траекторию стрелы.</li>
           <li>Для онлайн-игры первый игрок создаёт комнату, второй вводит код комнаты.</li>
