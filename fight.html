@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ГИП Clash</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app fight-app">
+      <header class="hud archery-header">
+        <div>
+          <a class="back-link" href="index.html">← Выбор игры</a>
+          <h1>ГИП Clash</h1>
+          <p class="subtitle">
+            Комедийный файтинг за согласование проекта: бей, блокируй и копи супер «Утверждаю!».
+            Победа в двух раундах из трёх.
+          </p>
+        </div>
+      </header>
+
+      <section class="duel-setup fight-setup" aria-label="Настройка боя">
+        <div class="setup-block">
+          <label class="player-name-label">
+            Игрок 1
+            <select id="p1Character"></select>
+          </label>
+          <label class="player-name-label">
+            Соперник
+            <select id="p2Character"></select>
+          </label>
+        </div>
+
+        <div class="setup-block setup-actions">
+          <button id="vsCpuBtn" class="btn" type="button">Бой с ИИ</button>
+          <button id="vsLocalBtn" class="btn btn-secondary" type="button">Вдвоём на клавиатуре</button>
+          <button id="restartFightBtn" class="btn btn-secondary" type="button">Реванш</button>
+        </div>
+
+        <div class="room-info">
+          <strong>Статус</strong>
+          <p id="fightStatus">Выбери режим и начни бой за согласование.</p>
+        </div>
+      </section>
+
+      <section class="game-shell fight-shell" aria-label="Арена">
+        <canvas id="fightCanvas" width="1120" height="520" aria-label="ГИП Clash"></canvas>
+        <div class="fight-touch" id="fightTouch" hidden>
+          <div class="touch-pad" data-side="move">
+            <button type="button" data-act="left">←</button>
+            <button type="button" data-act="jump">↑</button>
+            <button type="button" data-act="right">→</button>
+          </div>
+          <div class="touch-pad" data-side="attack">
+            <button type="button" data-act="block">Блок</button>
+            <button type="button" data-act="punch">Удар</button>
+            <button type="button" data-act="kick">Пинок</button>
+            <button type="button" data-act="special">Супер</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="duel-controls fight-controls" aria-label="Управление">
+        <div class="drag-help-card">
+          <strong>Игрок 1</strong>
+          <p><kbd>A</kbd>/<kbd>D</kbd> — ход, <kbd>W</kbd> — прыжок, <kbd>J</kbd> удар, <kbd>K</kbd> пинок, <kbd>L</kbd> блок, <kbd>I</kbd> супер</p>
+        </div>
+        <div class="drag-help-card">
+          <strong>Игрок 2</strong>
+          <p><kbd>←</kbd>/<kbd>→</kbd> — ход, <kbd>↑</kbd> — прыжок, <kbd>1</kbd> удар, <kbd>2</kbd> пинок, <kbd>3</kbd> блок, <kbd>4</kbd> супер</p>
+        </div>
+      </section>
+
+      <section class="help">
+        <h2>Правила ГИП Clash</h2>
+        <ul>
+          <li>Цель — снять всё HP соперника. Матч до двух побед в раундах.</li>
+          <li>Лёгкий удар быстрее, пинок сильнее и дальше. Блок снижает урон почти вдвое.</li>
+          <li>Удары заполняют шкалу согласования. На полной шкале жми супер.</li>
+          <li><strong>ГИП:</strong> супер «Утверждаю!» — ударная волна печатью.</li>
+          <li><strong>Alexey:</strong> супер «Есть замечания!» — веер листов с правками.</li>
+          <li>На телефоне доступны экранные кнопки для боя с ИИ.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="fight.js"></script>
+  </body>
+</html>

@@ -620,3 +620,95 @@ kbd {
     justify-content: flex-start;
   }
 }
+
+/* ===== Fight / ГИП Clash ===== */
+.game-mode-card-fight {
+  background: linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 236, 214, 0.92));
+}
+
+.game-mode-card-fight .game-mode-badge {
+  background: rgba(213, 129, 46, 0.16);
+  color: #8a4b12;
+}
+
+.game-mode-card-fight em {
+  background: linear-gradient(180deg, #f0a04b, #d5812e);
+  box-shadow: 0 8px 16px rgba(160, 90, 20, 0.22);
+}
+
+.fight-shell {
+  position: relative;
+}
+
+.fight-shell canvas {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  display: block;
+  touch-action: none;
+  background: transparent;
+}
+
+.fight-setup {
+  grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr) minmax(240px, 1.2fr);
+}
+
+.fight-controls {
+  grid-template-columns: 1fr 1fr;
+}
+
+.fight-controls kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid #c6d6ea;
+  background: #fff;
+  font-weight: 800;
+  color: #194776;
+}
+
+.fight-touch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.touch-pad {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.touch-pad button {
+  min-width: 64px;
+  min-height: 52px;
+  border: none;
+  border-radius: 14px;
+  font: inherit;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(180deg, #2aafff, #0a7fd4);
+  box-shadow: 0 8px 16px rgba(10, 85, 147, 0.2);
+  touch-action: none;
+  user-select: none;
+}
+
+.touch-pad[data-side="attack"] button[data-act="block"] {
+  background: linear-gradient(180deg, #6b86a3, #4f6f91);
+}
+
+.touch-pad[data-side="attack"] button[data-act="special"] {
+  background: linear-gradient(180deg, #f0a04b, #d5812e);
+}
+
+@media (max-width: 920px) {
+  .fight-setup,
+  .fight-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
