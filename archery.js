@@ -35,12 +35,17 @@ const DUEL = {
   maxHp: 100,
   p1X: 178,
   p2X: 942,
-  charW: 126,
-  charH: 158,
+  charW: 132,
+  charH: 168,
   arrowLifeMs: 1180,
   maxPull: 155,
   minPullToShoot: 24,
+  shootPoseMs: 520,
+  hurtPoseMs: 640,
+  winPoseMs: 999999,
 };
+
+const DUEL_FRAMES = ["idle", "aim", "shoot", "hurt", "win"];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -97,11 +102,17 @@ class SpriteCache {
   async get(characterId) {
     if (this.cache.has(characterId)) return this.cache.get(characterId);
     const character = getCharacter(characterId);
-    const frames = ["run1", "jump", "land", "slide", "hurt", "preview"];
     const loaded = {};
-    for (const frame of frames) {
-      loaded[frame] = await loadImage(`${character.path}/${frame}.png`);
+    for (const frame of DUEL_FRAMES) {
+      loaded[frame] = await loadImage(`${character.path}/duel/${frame}.png`);
     }
+    // Soft fallbacks if a duel frame is missing.
+    loaded.preview = await loadImage(character.preview);
+    if (!loaded.idle) loaded.idle = loaded.preview;
+    if (!loaded.aim) loaded.aim = loaded.idle;
+    if (!loaded.shoot) loaded.shoot = loaded.aim;
+    if (!loaded.hurt) loaded.hurt = loaded.idle;
+    if (!loaded.win) loaded.win = loaded.idle;
     this.cache.set(characterId, loaded);
     return loaded;
   }
@@ -137,6 +148,9 @@ class ArcheryGame {
     this.aim = null;
     this.lastAim = { angle: 36, power: 58 };
     this.idleTime = 0;
+    this.poseUntil = { p1: 0, p2: 0 };
+    this.poseName = { p1: "idle", p2: "idle" };
+    this.hitFlash = { p1: 0, p2: 0 };
     this.particles = [];
     this.clouds = Array.from({ length: 6 }, (_, i) => ({
       x: 80 + i * 180 + Math.random() * 40,
@@ -152,7 +166,16 @@ class ArcheryGame {
     this.initFirebase();
     this.onResize();
     window.addEventListener("resize", () => this.onResize());
+    this.preloadDefaultSprites();
     requestAnimationFrame((time) => this.loop(time));
+  }
+
+  async preloadDefaultSprites() {
+    for (const character of CHARACTERS) {
+      if (!this.sprites[character.id]) {
+        this.sprites[character.id] = await this.cache.get(character.id);
+      }
+    }
   }
 
   setupUI() {
@@ -403,10 +426,7 @@ class ArcheryGame {
       }
       if (this.room.lastShot && this.room.lastShot.id !== this.lastShotId) {
         this.lastShotId = this.room.lastShot.id;
-        this.shotAnimation = {
-          shot: this.room.lastShot,
-          start: performance.now(),
-        };
+        this.beginShotAnimation(this.room.lastShot);
       }
       this.updateStatusFromRoom();
     });
@@ -460,10 +480,51 @@ class ArcheryGame {
   getShotStart(role) {
     const pos = this.getPlayerPosition(role);
     return {
-      x: pos.x + pos.facing * 58,
-      y: pos.y - 106,
+      x: pos.x + pos.facing * 54,
+      y: pos.y - 112,
       facing: pos.facing,
     };
+  }
+
+  setPose(role, name, durationMs = 0) {
+    this.poseName[role] = name;
+    this.poseUntil[role] = durationMs > 0 ? performance.now() + durationMs : 0;
+  }
+
+  refreshPose(role, now = performance.now()) {
+    if (this.room?.phase === "finished") {
+      const winner = this.room.winner;
+      this.poseName[role] = winner === role ? "win" : "hurt";
+      return this.poseName[role];
+    }
+
+    if (this.poseUntil[role] && now < this.poseUntil[role]) {
+      return this.poseName[role];
+    }
+
+    if (this.shotAnimation?.shot?.shooter === role) {
+      this.poseName[role] = "shoot";
+      return "shoot";
+    }
+
+    const aiming =
+      this.dragging &&
+      this.aim &&
+      this.room?.phase === "playing" &&
+      this.currentShooterRole() === role;
+
+    if (aiming) {
+      this.poseName[role] = "aim";
+      return "aim";
+    }
+
+    if (this.room?.phase === "playing" && this.room.turn === role) {
+      this.poseName[role] = "idle";
+      return "idle";
+    }
+
+    this.poseName[role] = "idle";
+    return "idle";
   }
 
   makeShot(role, angle, power) {
@@ -551,10 +612,10 @@ class ArcheryGame {
     const pos = this.getPlayerPosition(role);
     const centerX = pos.x;
     return [
-      { type: "circle", part: "head", label: "голова", damage: 35, x: centerX, y: pos.y - 126, r: 26 },
-      { type: "rect", part: "body", label: "тело", damage: 24, x: centerX - 28, y: pos.y - 104, w: 56, h: 58 },
-      { type: "rect", part: "arm", label: "рука", damage: 14, x: centerX - 48, y: pos.y - 106, w: 96, h: 28 },
-      { type: "rect", part: "leg", label: "нога", damage: 14, x: centerX - 34, y: pos.y - 48, w: 68, h: 46 },
+      { type: "circle", part: "head", label: "голова", damage: 35, x: centerX, y: pos.y - 138, r: 24 },
+      { type: "rect", part: "body", label: "тело", damage: 24, x: centerX - 26, y: pos.y - 118, w: 52, h: 62 },
+      { type: "rect", part: "arm", label: "рука", damage: 14, x: centerX - 52, y: pos.y - 116, w: 104, h: 26 },
+      { type: "rect", part: "leg", label: "нога", damage: 14, x: centerX - 30, y: pos.y - 54, w: 60, h: 50 },
     ];
   }
 
@@ -570,7 +631,7 @@ class ArcheryGame {
     if (this.localMode) {
       this.applyShotLocal(shot);
       if (this.room.phase === "playing" && this.room.turn === "p2") {
-        window.setTimeout(() => this.enemyShootLocal(), 900);
+        window.setTimeout(() => this.enemyShootLocal(), DUEL.arrowLifeMs + 280);
       }
       return;
     }
@@ -593,9 +654,14 @@ class ArcheryGame {
     this.room = this.applyShotToRoom(this.room, shot, shot.target);
     if (this.room.lastShot && this.room.lastShot.id !== this.lastShotId) {
       this.lastShotId = this.room.lastShot.id;
-      this.shotAnimation = { shot: this.room.lastShot, start: performance.now() };
+      this.beginShotAnimation(this.room.lastShot);
     }
     this.updateStatusFromRoom();
+  }
+
+  beginShotAnimation(shot) {
+    this.shotAnimation = { shot, start: performance.now(), impactDone: false };
+    this.setPose(shot.shooter, "shoot", DUEL.shootPoseMs);
   }
 
   applyShotToRoom(room, shot, targetRole) {
@@ -620,7 +686,10 @@ class ArcheryGame {
 
   loop(time) {
     this.idleTime = time / 1000;
-    this.updateAtmosphere(0.016);
+    const dt = 0.016;
+    this.updateAtmosphere(dt);
+    if (this.hitFlash.p1 > 0) this.hitFlash.p1 = Math.max(0, this.hitFlash.p1 - dt * 2.4);
+    if (this.hitFlash.p2 > 0) this.hitFlash.p2 = Math.max(0, this.hitFlash.p2 - dt * 2.4);
     this.render(time);
     requestAnimationFrame((next) => this.loop(next));
   }
@@ -823,12 +892,8 @@ class ArcheryGame {
   }
 
   getVisualFrame(role) {
-    if (!this.room?.players?.[role]) return "preview";
-    if (this.shotAnimation?.shot?.target === role) return "hurt";
-    if (this.room.phase === "playing" && this.room.turn === role) {
-      return this.dragging && this.currentShooterRole() === role ? "land" : "run1";
-    }
-    return "run1";
+    if (!this.room?.players?.[role]) return "idle";
+    return this.refreshPose(role);
   }
 
   drawPlayer(ctx, role) {
@@ -842,98 +907,83 @@ class ArcheryGame {
     const characterId = player.character || "gip";
     const sprites = this.sprites[characterId] || {};
     const frame = this.getVisualFrame(role);
-    const image = sprites[frame] || sprites.run1 || sprites.preview;
+    const image = sprites[frame] || sprites.idle || sprites.preview;
     const w = DUEL.charW;
-    const h = frame === "land" ? DUEL.charH * 0.92 : DUEL.charH;
-    const bob = Math.sin(this.idleTime * 3.2 + (role === "p1" ? 0 : Math.PI)) * 2.6;
-    const breathe = 1 + Math.sin(this.idleTime * 2.4 + (role === "p1" ? 0.5 : 1.2)) * 0.012;
+    const h = DUEL.charH;
+    const bob = Math.sin(this.idleTime * 2.1 + (role === "p1" ? 0 : 1.4)) * 1.4;
+    const breathe = 1 + Math.sin(this.idleTime * 1.8 + (role === "p1" ? 0.4 : 1.1)) * 0.008;
     const active = this.room?.phase === "playing" && this.room.turn === role;
-    const lean = active && this.dragging && this.currentShooterRole() === role ? (role === "p1" ? -0.06 : 0.06) : 0;
+    const aiming = frame === "aim" && this.aim && this.currentShooterRole() === role;
+    const aimTilt = aiming ? ((this.aim.angle - 36) / 72) * 0.18 * (role === "p1" ? -1 : 1) : 0;
+    const hurtNudge = frame === "hurt" ? (role === "p1" ? -8 : 8) : 0;
+    const flash = this.hitFlash[role] || 0;
 
     ctx.save();
-    ctx.fillStyle = "rgba(35,64,92,0.2)";
+    ctx.fillStyle = "rgba(35,64,92,0.18)";
     ctx.beginPath();
-    ctx.ellipse(pos.x, pos.y + 4, 52, 9, 0, 0, Math.PI * 2);
+    ctx.ellipse(pos.x, pos.y + 4, 48, 8, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    if (active) {
-      ctx.strokeStyle = "rgba(13, 138, 229, 0.35)";
+    if (active && this.room.phase === "playing") {
+      ctx.strokeStyle = "rgba(13, 138, 229, 0.28)";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(pos.x, pos.y - h * 0.45 + bob, 58, 78, 0, 0, Math.PI * 2);
+      ctx.ellipse(pos.x, pos.y - h * 0.48 + bob, 54, 74, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
 
     if (image) {
-      ctx.translate(pos.x, pos.y + bob);
-      ctx.rotate(lean);
+      ctx.translate(pos.x + hurtNudge, pos.y + bob);
+      ctx.rotate(aimTilt);
       ctx.scale((role === "p2" ? -1 : 1) * breathe, breathe);
       const scale = Math.min(w / image.naturalWidth, h / image.naturalHeight);
       const drawW = image.naturalWidth * scale;
       const drawH = image.naturalHeight * scale;
+      if (flash > 0) {
+        ctx.filter = `brightness(${1 + flash * 0.8}) saturate(${1 + flash})`;
+      }
       ctx.drawImage(image, -drawW / 2, -drawH, drawW, drawH);
-      this.drawBowOverlay(ctx, role, drawW, drawH);
+      ctx.filter = "none";
     } else {
-      ctx.fillStyle = role === "p1" ? "#1f5d8c" : "#8c4b1f";
-      roundedRectPath(ctx, pos.x - 24, pos.y - 112, 48, 90, 16);
-      ctx.fill();
-      ctx.fillStyle = "#efc49e";
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y - 128, 22, 0, Math.PI * 2);
-      ctx.fill();
+      this.drawFallbackArcher(ctx, pos, role, frame);
     }
     ctx.restore();
   }
 
-  drawBowOverlay(ctx, role, drawW, drawH) {
-    const active = this.room?.phase === "playing" && this.room.turn === role && this.canControlShot();
-    const localAim = active && this.dragging && this.currentShooterRole() === role ? this.aim : null;
-    const tension = localAim ? clamp(localAim.power / 100, 0, 1) : 0.25 + Math.sin(this.idleTime * 4) * 0.035;
-    const bowX = drawW * 0.34;
-    const bowY = -drawH * 0.54;
-    const bowH = 54;
-    const pull = 12 + tension * 28;
-
-    ctx.save();
-    ctx.strokeStyle = "rgba(86, 45, 22, 0.95)";
-    ctx.lineWidth = 4;
-    ctx.lineCap = "round";
+  drawFallbackArcher(ctx, pos, role, frame) {
+    const facing = role === "p2" ? -1 : 1;
+    ctx.translate(pos.x, pos.y);
+    ctx.scale(facing, 1);
+    ctx.fillStyle = role === "p1" ? "#1f5d8c" : "#8c4b1f";
+    roundedRectPath(ctx, -24, -112, 48, 90, 16);
+    ctx.fill();
+    ctx.fillStyle = "#efc49e";
     ctx.beginPath();
-    ctx.moveTo(bowX, bowY - bowH / 2);
-    ctx.quadraticCurveTo(bowX + 18, bowY, bowX, bowY + bowH / 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(32, 32, 36, 0.82)";
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(bowX, bowY - bowH / 2);
-    ctx.lineTo(bowX - pull, bowY);
-    ctx.lineTo(bowX, bowY + bowH / 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(246, 235, 193, 0.95)";
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.moveTo(bowX - pull - 8, bowY);
-    ctx.lineTo(bowX + 26, bowY);
-    ctx.stroke();
-
-    ctx.fillStyle = "#d79b35";
-    ctx.beginPath();
-    ctx.moveTo(bowX + 29, bowY);
-    ctx.lineTo(bowX + 17, bowY - 5);
-    ctx.lineTo(bowX + 17, bowY + 5);
-    ctx.closePath();
+    ctx.arc(0, -128, 22, 0, Math.PI * 2);
     ctx.fill();
 
-    if (localAim && tension > 0.4) {
-      ctx.strokeStyle = `rgba(255, 180, 80, ${0.2 + tension * 0.4})`;
+    const pull = frame === "aim" ? 34 : frame === "shoot" ? 10 : 16;
+    ctx.strokeStyle = "#5a3218";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(28, -138);
+    ctx.quadraticCurveTo(48, -112, 28, -86);
+    ctx.stroke();
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(28, -138);
+    ctx.lineTo(28 - pull, -112);
+    ctx.lineTo(28, -86);
+    ctx.stroke();
+    if (frame === "aim") {
+      ctx.strokeStyle = "#e8d7a8";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(bowX - pull * 0.4, bowY, 10 + tension * 8, 0, Math.PI * 2);
+      ctx.moveTo(28 - pull, -112);
+      ctx.lineTo(54, -112);
       ctx.stroke();
     }
-    ctx.restore();
   }
 
   drawWaitingSilhouette(ctx) {
@@ -979,14 +1029,15 @@ class ArcheryGame {
       return;
     }
 
-    const visiblePull = Math.min(64, aim.pull);
+    // Pull rope visual
+    const visiblePull = Math.min(70, aim.pull);
     const dirLen = Math.max(1, Math.sqrt((aim.startX - aim.endX) ** 2 + (aim.startY - aim.endY) ** 2));
     const ux = (aim.endX - aim.startX) / dirLen;
     const uy = (aim.endY - aim.startY) / dirLen;
     const px = aim.startX + ux * visiblePull;
     const py = aim.startY + uy * visiblePull;
 
-    ctx.strokeStyle = "rgba(25, 71, 118, 0.25)";
+    ctx.strokeStyle = "rgba(25, 71, 118, 0.22)";
     ctx.lineWidth = 8;
     ctx.lineCap = "round";
     ctx.beginPath();
@@ -994,7 +1045,7 @@ class ArcheryGame {
     ctx.lineTo(px, py);
     ctx.stroke();
 
-    ctx.strokeStyle = aim.power > 78 ? "rgba(213, 129, 46, 0.9)" : "rgba(47, 146, 214, 0.9)";
+    ctx.strokeStyle = aim.power > 78 ? "rgba(213, 129, 46, 0.92)" : "rgba(47, 146, 214, 0.92)";
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(aim.startX, aim.startY);
@@ -1006,7 +1057,28 @@ class ArcheryGame {
     ctx.arc(px, py, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    // Predicted ballistic arc
+    const preview = this.makeShot(role, aim.angle, aim.power);
+    ctx.beginPath();
+    ctx.setLineDash([5, 7]);
+    ctx.strokeStyle = "rgba(25, 71, 118, 0.45)";
+    ctx.lineWidth = 2;
+    let started = false;
+    for (let t = 0; t <= 1.8; t += 0.04) {
+      const x = preview.startX + preview.vx * t + preview.wind * t * t;
+      const y = preview.startY + preview.vy * t + 0.5 * DUEL.gravity * t * t;
+      if (y > DUEL.groundY + 20 || x < -40 || x > this.width + 40) break;
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
     roundedRectPath(ctx, aim.startX - 62, aim.startY + 42, 124, 44, 10);
     ctx.fill();
     ctx.fillStyle = "#194776";
@@ -1026,17 +1098,28 @@ class ArcheryGame {
   drawShot(ctx, time) {
     if (!this.shotAnimation) return;
     const elapsed = time - this.shotAnimation.start;
-    if (elapsed > DUEL.arrowLifeMs) {
-      const shot = this.shotAnimation.shot;
-      const t = 1.55;
+    const shot = this.shotAnimation.shot;
+    const progress = elapsed / DUEL.arrowLifeMs;
+
+    if (!this.shotAnimation.impactDone && progress >= 0.82) {
+      this.shotAnimation.impactDone = true;
+      const hit = Number(shot.damage || 0) > 0;
+      if (hit) {
+        this.setPose(shot.target, "hurt", DUEL.hurtPoseMs);
+        this.hitFlash[shot.target] = 1;
+      }
+      const t = 1.55 * 0.82;
       const x = shot.startX + shot.vx * t + Number(shot.wind || 0) * t * t;
       const y = shot.startY + shot.vy * t + 0.5 * DUEL.gravity * t * t;
-      this.spawnHitFx(x, y, Number(shot.damage || 0) > 0);
+      this.spawnHitFx(x, y, hit);
+    }
+
+    if (elapsed > DUEL.arrowLifeMs) {
       this.shotAnimation = null;
       return;
     }
-    const shot = this.shotAnimation.shot;
-    const t = (elapsed / DUEL.arrowLifeMs) * 1.55;
+
+    const t = progress * 1.55;
     const x = shot.startX + shot.vx * t + Number(shot.wind || 0) * t * t;
     const y = shot.startY + shot.vy * t + 0.5 * DUEL.gravity * t * t;
     const nextT = t + 0.02;
@@ -1044,23 +1127,23 @@ class ArcheryGame {
     const ny = shot.startY + shot.vy * nextT + 0.5 * DUEL.gravity * nextT * nextT;
     const angle = Math.atan2(ny - y, nx - x);
 
-    if (Math.random() < 0.55) {
+    if (Math.random() < 0.45) {
       this.particles.push({
         x,
         y,
         vx: -Math.cos(angle) * 30,
         vy: -Math.sin(angle) * 30,
-        life: 0.2,
-        maxLife: 0.2,
+        life: 0.18,
+        maxLife: 0.18,
         size: 2,
-        color: "rgba(255, 220, 150, 0.7)",
+        color: "rgba(255, 220, 150, 0.65)",
       });
     }
 
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
-    ctx.strokeStyle = "rgba(92, 60, 31, 0.25)";
+    ctx.strokeStyle = "rgba(92, 60, 31, 0.22)";
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(-28, 0);
