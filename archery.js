@@ -31,26 +31,29 @@ const CHARACTERS = [
 
 const DUEL = {
   gravity: 620,
-  groundY: 430,
+  groundY: 438,
   maxHp: 100,
-  p1X: 178,
-  p2X: 942,
-  charW: 126,
-  charH: 158,
+  p1X: 168,
+  p2X: 952,
+  charW: 152,
+  charH: 192,
   arrowLifeMs: 1180,
   maxPull: 155,
   minPullToShoot: 24,
-  trailLength: 10,
-  shakeDecay: 0.86,
+  trailLength: 12,
+  shakeDecay: 0.84,
 };
 
 const HIT_COLORS = {
-  head: ["#ff6b6b", "#ffd166", "#fff1c1"],
-  body: ["#ff8f5a", "#ffc857", "#ffe8a3"],
-  arm: ["#7ec8ff", "#b8e0ff", "#fff"],
-  leg: ["#7ec8ff", "#b8e0ff", "#fff"],
-  miss: ["#9bb4c9", "#d7e6f2", "#fff"],
+  head: ["#ff5d5d", "#ffb347", "#ffe7a8"],
+  body: ["#ff8a4c", "#ffc45c", "#ffe6b0"],
+  arm: ["#e8a86a", "#f3d2a4", "#fff4e4"],
+  leg: ["#e8a86a", "#f3d2a4", "#fff4e4"],
+  miss: ["#c4b39a", "#ebe0cf", "#fff"],
 };
+
+const FONT_DISPLAY = '"Russo One", "Arial Black", sans-serif';
+const FONT_UI = '"Manrope", "Segoe UI", sans-serif';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -120,11 +123,15 @@ class SpriteCache {
 class ArcheryGame {
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
+    this.ctx = canvas.getContext("2d", { alpha: false });
     this.width = canvas.width;
     this.height = canvas.height;
     this.cache = new SpriteCache();
     this.sprites = {};
+    if (this.ctx) {
+      this.ctx.imageSmoothingEnabled = true;
+      this.ctx.imageSmoothingQuality = "high";
+    }
 
     this.nameInput = document.getElementById("duelPlayerName");
     this.characterSelect = document.getElementById("duelCharacterSelect");
@@ -154,8 +161,12 @@ class ArcheryGame {
     this.stuckArrows = [];
     this.shake = 0;
     this.hitFlash = 0;
+    this.hitFlashColor = "rgba(220, 60, 40,";
     this.fxTriggeredForShot = null;
+    this.hitReactUntil = { p1: 0, p2: 0 };
+    this.recoilUntil = { p1: 0, p2: 0 };
     this.clouds = this.createClouds();
+    this.grassBlades = this.createGrass();
 
     this.playerName = normalizeName(localStorage.getItem(NAME_KEY) || "Игрок");
     this.characterId = localStorage.getItem(CHARACTER_KEY) || CHARACTERS[0].id;
@@ -169,12 +180,25 @@ class ArcheryGame {
 
   createClouds() {
     return [
-      { x: 90, y: 78, s: 1.1, speed: 8 },
-      { x: 340, y: 54, s: 0.85, speed: 5.5 },
-      { x: 620, y: 92, s: 1.25, speed: 6.8 },
-      { x: 880, y: 48, s: 0.95, speed: 4.2 },
-      { x: 1040, y: 110, s: 0.7, speed: 7.4 },
+      { x: 90, y: 78, s: 1.15, speed: 6.5, alpha: 0.55 },
+      { x: 340, y: 54, s: 0.9, speed: 4.2, alpha: 0.4 },
+      { x: 620, y: 88, s: 1.35, speed: 5.5, alpha: 0.5 },
+      { x: 880, y: 48, s: 1.0, speed: 3.6, alpha: 0.38 },
+      { x: 1040, y: 110, s: 0.75, speed: 5.8, alpha: 0.45 },
     ];
+  }
+
+  createGrass() {
+    const blades = [];
+    for (let x = 0; x < this.width; x += 7) {
+      blades.push({
+        x,
+        h: 5 + ((x * 17) % 11),
+        phase: (x * 0.07) % Math.PI,
+        shade: (x * 13) % 3,
+      });
+    }
+    return blades;
   }
 
   setupUI() {
@@ -425,10 +449,14 @@ class ArcheryGame {
       }
       if (this.room.lastShot && this.room.lastShot.id !== this.lastShotId) {
         this.lastShotId = this.room.lastShot.id;
+        const shot = this.ensureShotImpact(this.room.lastShot);
         this.shotAnimation = {
-          shot: this.ensureShotImpact(this.room.lastShot),
+          shot,
           start: performance.now(),
         };
+        if (shot?.shooter) {
+          this.recoilUntil[shot.shooter] = performance.now() + 280;
+        }
       }
       this.updateStatusFromRoom();
     });
@@ -482,8 +510,8 @@ class ArcheryGame {
   getShotStart(role) {
     const pos = this.getPlayerPosition(role);
     return {
-      x: pos.x + pos.facing * 58,
-      y: pos.y - 106,
+      x: pos.x + pos.facing * 62,
+      y: pos.y - 118,
       facing: pos.facing,
     };
   }
@@ -595,10 +623,10 @@ class ArcheryGame {
     const pos = this.getPlayerPosition(role);
     const centerX = pos.x;
     return [
-      { type: "circle", part: "head", label: "голова", damage: 35, x: centerX, y: pos.y - 126, r: 26 },
-      { type: "rect", part: "body", label: "тело", damage: 24, x: centerX - 28, y: pos.y - 104, w: 56, h: 58 },
-      { type: "rect", part: "arm", label: "рука", damage: 14, x: centerX - 48, y: pos.y - 106, w: 96, h: 28 },
-      { type: "rect", part: "leg", label: "нога", damage: 14, x: centerX - 34, y: pos.y - 48, w: 68, h: 46 },
+      { type: "circle", part: "head", label: "голова", damage: 35, x: centerX, y: pos.y - 148, r: 30 },
+      { type: "rect", part: "body", label: "тело", damage: 24, x: centerX - 32, y: pos.y - 122, w: 64, h: 66 },
+      { type: "rect", part: "arm", label: "рука", damage: 14, x: centerX - 54, y: pos.y - 124, w: 108, h: 32 },
+      { type: "rect", part: "leg", label: "нога", damage: 14, x: centerX - 38, y: pos.y - 56, w: 76, h: 52 },
     ];
   }
 
@@ -608,6 +636,7 @@ class ArcheryGame {
     if (this.localMode && this.room.turn !== "p1") return;
 
     const shooter = this.localMode ? this.room.turn : this.role;
+    this.recoilUntil[shooter] = (this.now || performance.now()) + 280;
     const shot = this.simulateShot(this.room, shooter, angle, power);
     const targetRole = shot.target;
 
@@ -629,6 +658,7 @@ class ArcheryGame {
     if (!this.room || this.room.phase !== "playing" || this.room.turn !== "p2") return;
     const angle = 18 + Math.floor(Math.random() * 34);
     const power = 46 + Math.floor(Math.random() * 44);
+    this.recoilUntil.p2 = (this.now || performance.now()) + 280;
     const shot = this.simulateShot(this.room, "p2", angle, power);
     this.applyShotLocal(shot);
   }
@@ -745,49 +775,51 @@ class ArcheryGame {
     const isHit = Number(shot.damage || 0) > 0;
     const part = shot.hitPart || "miss";
     const colors = HIT_COLORS[part] || HIT_COLORS.miss;
-    const count = isHit ? (part === "head" ? 22 : 14) : 8;
+    const count = isHit ? (part === "head" ? 26 : 16) : 9;
 
     for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
-      const speed = (isHit ? 120 : 70) + Math.random() * (isHit ? 180 : 90);
+      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.45;
+      const speed = (isHit ? 140 : 80) + Math.random() * (isHit ? 200 : 100);
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 40,
-        gravity: 420,
-        life: 0.35 + Math.random() * 0.45,
-        size: 2.5 + Math.random() * (isHit ? 4.5 : 2.5),
+        vy: Math.sin(angle) * speed - 50,
+        gravity: 460,
+        life: 0.4 + Math.random() * 0.5,
+        size: 2.8 + Math.random() * (isHit ? 5 : 2.8),
         color: colors[i % colors.length],
-        shape: Math.random() > 0.55 ? "spark" : "dot",
+        shape: Math.random() > 0.5 ? "spark" : "dot",
       });
     }
 
     if (isHit) {
-      this.shake = part === "head" ? 9 : 5.5;
-      this.hitFlash = part === "head" ? 0.55 : 0.32;
+      this.shake = part === "head" ? 10 : 6;
+      this.hitFlash = part === "head" ? 0.7 : 0.42;
+      this.hitFlashColor = part === "head" ? "rgba(210, 35, 35," : "rgba(220, 110, 40,";
+      this.hitReactUntil[shot.target] = (this.now || performance.now()) + 720;
       this.floatTexts.push({
         text: `-${shot.damage}`,
         sub: shot.hitLabel || "",
         x,
-        y: y - 18,
-        vy: -70,
-        life: 1.15,
-        maxLife: 1.15,
+        y: y - 22,
+        vy: -78,
+        life: 1.2,
+        maxLife: 1.2,
         opacity: 1,
-        color: part === "head" ? "#d62828" : "#c45c26",
+        color: part === "head" ? "#ffd0d0" : "#ffe0c2",
       });
     } else {
       this.floatTexts.push({
         text: "Мимо",
         sub: "",
         x,
-        y: y - 12,
-        vy: -42,
-        life: 0.9,
-        maxLife: 0.9,
+        y: y - 14,
+        vy: -46,
+        life: 0.95,
+        maxLife: 0.95,
         opacity: 1,
-        color: "#446387",
+        color: "#f0e6d4",
       });
       if (y >= DUEL.groundY - 8) {
         const facing = shot.vx >= 0 ? 1 : -1;
@@ -795,7 +827,7 @@ class ArcheryGame {
           x,
           y: DUEL.groundY,
           angle: facing > 0 ? 0.55 : Math.PI - 0.55,
-          life: 4.5,
+          life: 5,
         });
         if (this.stuckArrows.length > 6) this.stuckArrows.shift();
       }
@@ -814,6 +846,8 @@ class ArcheryGame {
 
   render(time) {
     const ctx = this.ctx;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.clearRect(0, 0, this.width, this.height);
 
     const shakeX = this.shake ? (Math.random() - 0.5) * this.shake * 2 : 0;
@@ -829,141 +863,200 @@ class ArcheryGame {
       return;
     }
 
+    this.drawArenaMarkers(ctx);
     this.drawStuckArrows(ctx);
-    this.drawHUD(ctx);
     this.drawPlayer(ctx, "p1");
     this.drawPlayer(ctx, "p2");
     this.drawAiming(ctx);
     this.drawShot(ctx, time);
     this.drawParticles(ctx);
     this.drawFloatTexts(ctx);
+    this.drawHUD(ctx);
     this.drawRoomState(ctx);
     this.drawVictoryOverlay(ctx);
 
     if (this.hitFlash > 0) {
-      ctx.fillStyle = `rgba(255, 120, 80, ${this.hitFlash * 0.22})`;
+      ctx.fillStyle = `${this.hitFlashColor} ${this.hitFlash * 0.38})`;
       ctx.fillRect(-20, -20, this.width + 40, this.height + 40);
     }
+
+    // Soft vignette for focus on arena
+    const vig = ctx.createRadialGradient(this.width / 2, DUEL.groundY - 40, 180, this.width / 2, DUEL.groundY - 40, 720);
+    vig.addColorStop(0, "rgba(0,0,0,0)");
+    vig.addColorStop(1, "rgba(20, 10, 8, 0.28)");
+    ctx.fillStyle = vig;
+    ctx.fillRect(-20, -20, this.width + 40, this.height + 40);
 
     ctx.restore();
   }
 
   drawBackground(ctx) {
     const sky = ctx.createLinearGradient(0, 0, 0, this.height);
-    sky.addColorStop(0, "#dff4ff");
-    sky.addColorStop(0.45, "#cfe8ff");
-    sky.addColorStop(1, "#b7d7f4");
+    sky.addColorStop(0, "#24182f");
+    sky.addColorStop(0.22, "#5a3044");
+    sky.addColorStop(0.48, "#c25a3c");
+    sky.addColorStop(0.72, "#e39a52");
+    sky.addColorStop(1, "#efc07a");
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // Soft sun glow
-    const sun = ctx.createRadialGradient(920, 70, 8, 920, 70, 120);
-    sun.addColorStop(0, "rgba(255, 236, 170, 0.95)");
-    sun.addColorStop(0.35, "rgba(255, 220, 140, 0.35)");
-    sun.addColorStop(1, "rgba(255, 220, 140, 0)");
-    ctx.fillStyle = sun;
+    // Sun disc + glow
+    const sunX = 930;
+    const sunY = 98;
+    const glow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 160);
+    glow.addColorStop(0, "rgba(255, 230, 160, 0.95)");
+    glow.addColorStop(0.35, "rgba(255, 170, 90, 0.35)");
+    glow.addColorStop(1, "rgba(255, 140, 70, 0)");
+    ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(920, 70, 120, 0, Math.PI * 2);
+    ctx.arc(sunX, sunY, 160, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffe7a8";
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, 28, 0, Math.PI * 2);
     ctx.fill();
 
     for (const cloud of this.clouds) {
-      this.drawCloud(ctx, cloud.x, cloud.y, cloud.s);
+      this.drawCloud(ctx, cloud.x, cloud.y, cloud.s, cloud.alpha);
     }
 
-    // Distant hills
-    ctx.fillStyle = "rgba(120, 168, 205, 0.28)";
+    // Far ridge
+    ctx.fillStyle = "rgba(72, 42, 48, 0.55)";
     ctx.beginPath();
-    ctx.moveTo(0, DUEL.groundY - 38);
-    ctx.quadraticCurveTo(180, DUEL.groundY - 92, 360, DUEL.groundY - 44);
-    ctx.quadraticCurveTo(560, DUEL.groundY - 110, 760, DUEL.groundY - 40);
-    ctx.quadraticCurveTo(940, DUEL.groundY - 88, this.width, DUEL.groundY - 52);
-    ctx.lineTo(this.width, DUEL.groundY + 8);
-    ctx.lineTo(0, DUEL.groundY + 8);
+    ctx.moveTo(0, DUEL.groundY - 28);
+    ctx.quadraticCurveTo(160, DUEL.groundY - 110, 340, DUEL.groundY - 42);
+    ctx.quadraticCurveTo(560, DUEL.groundY - 128, 760, DUEL.groundY - 36);
+    ctx.quadraticCurveTo(940, DUEL.groundY - 104, this.width, DUEL.groundY - 48);
+    ctx.lineTo(this.width, DUEL.groundY + 10);
+    ctx.lineTo(0, DUEL.groundY + 10);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "rgba(141, 178, 211, 0.42)";
-    for (let x = 20; x < this.width; x += 112) {
-      const h = 82 + ((x / 112) % 4) * 25;
-      const top = DUEL.groundY - 170 - h * 0.3;
-      roundedRectPath(ctx, x, top, 74, h, 7);
+    // City silhouettes
+    for (let x = 10; x < this.width; x += 108) {
+      const h = 70 + ((x / 108) % 5) * 22;
+      const top = DUEL.groundY - 150 - h * 0.28;
+      ctx.fillStyle = "rgba(38, 24, 34, 0.72)";
+      roundedRectPath(ctx, x, top, 70, h, 5);
       ctx.fill();
-      ctx.fillStyle = "rgba(255,255,255,0.42)";
-      for (let wy = top + 14; wy < DUEL.groundY - 80; wy += 18) {
-        for (let wx = x + 12; wx < x + 62; wx += 18) {
-          const blink = (Math.sin(this.idleTime * 1.4 + wx * 0.08 + wy * 0.05) + 1) * 0.5;
-          if (blink > 0.35) ctx.fillRect(wx, wy, 7, 10);
+      for (let wy = top + 12; wy < DUEL.groundY - 70; wy += 16) {
+        for (let wx = x + 10; wx < x + 58; wx += 16) {
+          const lit = (Math.sin(this.idleTime * 1.1 + wx * 0.09 + wy * 0.04) + 1) * 0.5;
+          if (lit > 0.55) {
+            ctx.fillStyle = `rgba(255, 190, 110, ${0.25 + lit * 0.45})`;
+            ctx.fillRect(wx, wy, 6, 8);
+          }
         }
       }
-      ctx.fillStyle = "rgba(141, 178, 211, 0.42)";
     }
 
+    // Ground
     const ground = ctx.createLinearGradient(0, DUEL.groundY, 0, this.height);
-    ground.addColorStop(0, "#8fbeda");
-    ground.addColorStop(0.35, "#7aabcc");
-    ground.addColorStop(1, "#6a98bc");
+    ground.addColorStop(0, "#5d7a3d");
+    ground.addColorStop(0.22, "#4a6432");
+    ground.addColorStop(0.55, "#3a4f2a");
+    ground.addColorStop(1, "#2c3b22");
     ctx.fillStyle = ground;
     ctx.fillRect(0, DUEL.groundY, this.width, this.height - DUEL.groundY);
 
-    ctx.fillStyle = "#6e9bc4";
-    ctx.fillRect(0, DUEL.groundY + 18, this.width, 12);
+    // Dirt strip
+    ctx.fillStyle = "#6b5338";
+    ctx.fillRect(0, DUEL.groundY, this.width, 10);
+    ctx.fillStyle = "rgba(255, 210, 140, 0.18)";
+    ctx.fillRect(0, DUEL.groundY, this.width, 3);
 
-    ctx.strokeStyle = "rgba(255,255,255,0.38)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let x = 0; x < this.width; x += 48) {
-      const wobble = Math.sin(this.idleTime * 0.8 + x * 0.04) * 1.5;
-      ctx.moveTo(x, DUEL.groundY + 45 + wobble);
-      ctx.lineTo(x + 18, DUEL.groundY + 54 + wobble);
+    // Grass blades
+    for (const blade of this.grassBlades) {
+      const sway = Math.sin(this.idleTime * 2.2 + blade.phase) * 2.2;
+      const colors = ["#6f9148", "#587838", "#7ea352"];
+      ctx.strokeStyle = colors[blade.shade];
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(blade.x, DUEL.groundY + 1);
+      ctx.quadraticCurveTo(blade.x + sway, DUEL.groundY - blade.h * 0.5, blade.x + sway * 1.4, DUEL.groundY - blade.h);
+      ctx.stroke();
     }
-    ctx.stroke();
 
-    // Soft ground highlight under arena
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
-    ctx.beginPath();
-    ctx.ellipse(this.width / 2, DUEL.groundY + 8, 360, 18, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Arena soft light pool
+    const pool = ctx.createRadialGradient(this.width / 2, DUEL.groundY, 40, this.width / 2, DUEL.groundY, 420);
+    pool.addColorStop(0, "rgba(255, 210, 140, 0.16)");
+    pool.addColorStop(1, "rgba(255, 210, 140, 0)");
+    ctx.fillStyle = pool;
+    ctx.fillRect(0, DUEL.groundY - 30, this.width, 80);
   }
 
-  drawCloud(ctx, x, y, scale) {
+  drawCloud(ctx, x, y, scale, alpha = 0.5) {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
-    ctx.fillStyle = "rgba(255,255,255,0.72)";
+    ctx.fillStyle = `rgba(255, 220, 190, ${alpha})`;
     ctx.beginPath();
     ctx.arc(0, 0, 18, 0, Math.PI * 2);
-    ctx.arc(22, -6, 24, 0, Math.PI * 2);
-    ctx.arc(48, 2, 16, 0, Math.PI * 2);
+    ctx.arc(24, -8, 26, 0, Math.PI * 2);
+    ctx.arc(52, 2, 17, 0, Math.PI * 2);
     ctx.arc(28, 10, 18, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+
+  drawArenaMarkers(ctx) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 230, 180, 0.18)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 10]);
+    ctx.beginPath();
+    ctx.moveTo(this.width / 2, DUEL.groundY - 8);
+    ctx.lineTo(this.width / 2, DUEL.groundY + 28);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    for (const role of ["p1", "p2"]) {
+      if (!this.room?.players?.[role]) continue;
+      const pos = this.getPlayerPosition(role);
+      const active = this.room.phase === "playing" && this.room.turn === role;
+      ctx.fillStyle = active ? "rgba(255, 180, 80, 0.28)" : "rgba(20, 30, 18, 0.22)";
+      ctx.beginPath();
+      ctx.ellipse(pos.x, pos.y + 6, active ? 64 : 54, active ? 14 : 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (active) {
+        ctx.strokeStyle = "rgba(255, 190, 90, 0.55)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(pos.x, pos.y + 6, 64 + Math.sin(this.idleTime * 4) * 2, 14, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 
   drawHUD(ctx) {
     const p1 = this.room.players?.p1 || {};
     const p2 = this.room.players?.p2 || {};
-    this.drawHpPanel(ctx, 18, 16, p1, "p1");
-    this.drawHpPanel(ctx, this.width - 318, 16, p2, "p2");
+    this.drawHpPanel(ctx, 16, 14, p1, "p1");
+    this.drawHpPanel(ctx, this.width - 316, 14, p2, "p2");
 
     ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    roundedRectPath(ctx, this.width / 2 - 128, 16, 256, 78, 14);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(33, 88, 140, 0.12)";
-    ctx.lineWidth = 1.5;
-    roundedRectPath(ctx, this.width / 2 - 128, 16, 256, 78, 14);
-    ctx.stroke();
-
-    ctx.fillStyle = "#213a58";
-    ctx.font = "800 17px Inter, sans-serif";
+    this.drawGlassPanel(ctx, this.width / 2 - 132, 14, 264, 76);
+    ctx.fillStyle = "#f7efe2";
+    ctx.font = `800 15px ${FONT_UI}`;
     ctx.textAlign = "center";
     const turnName = this.room.turn === "p1" ? p1.name || "Игрок 1" : p2.name || "Игрок 2";
-    ctx.fillText(`Ход: ${turnName}`, this.width / 2, 40);
-
+    const turnLabel = this.room.phase === "finished" ? "Дуэль окончена" : `Ход: ${turnName}`;
+    ctx.fillText(turnLabel, this.width / 2, 38);
     const wind = Number(this.room.wind || 0);
-    this.drawWindGlyph(ctx, this.width / 2, 68, wind);
+    this.drawWindGlyph(ctx, this.width / 2, 62, wind);
     ctx.textAlign = "left";
     ctx.restore();
+  }
+
+  drawGlassPanel(ctx, x, y, w, h) {
+    ctx.fillStyle = "rgba(18, 12, 16, 0.72)";
+    roundedRectPath(ctx, x, y, w, h, 14);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255, 210, 150, 0.18)";
+    ctx.lineWidth = 1.5;
+    roundedRectPath(ctx, x, y, w, h, 14);
+    ctx.stroke();
   }
 
   drawWindGlyph(ctx, cx, cy, wind) {
@@ -971,17 +1064,17 @@ class ArcheryGame {
     const dir = wind === 0 ? 0 : wind > 0 ? 1 : -1;
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.fillStyle = "#446387";
-    ctx.font = "700 13px Inter, sans-serif";
+    ctx.fillStyle = "rgba(247, 239, 226, 0.85)";
+    ctx.font = `700 12px ${FONT_UI}`;
     ctx.textAlign = "center";
     ctx.fillText(`Ветер ${strength || "0"}`, 0, 18);
 
-    ctx.strokeStyle = strength ? "rgba(47, 146, 214, 0.95)" : "rgba(100, 130, 160, 0.45)";
-    ctx.fillStyle = strength ? "rgba(47, 146, 214, 0.95)" : "rgba(100, 130, 160, 0.45)";
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = strength ? "rgba(255, 186, 92, 0.95)" : "rgba(180, 160, 140, 0.55)";
+    ctx.fillStyle = strength ? "rgba(255, 186, 92, 0.95)" : "rgba(180, 160, 140, 0.55)";
+    ctx.lineWidth = 2.6;
     ctx.lineCap = "round";
 
-    const len = 18 + Math.min(34, strength * 1.1);
+    const len = 18 + Math.min(36, strength * 1.15);
     if (!dir) {
       ctx.beginPath();
       ctx.moveTo(-12, -4);
@@ -998,16 +1091,6 @@ class ArcheryGame {
       ctx.lineTo(dir * len * 0.5 - dir * 8, 2);
       ctx.closePath();
       ctx.fill();
-
-      // Feather marks to sell "wind"
-      for (let i = 0; i < Math.min(3, Math.ceil(strength / 12)); i++) {
-        const fx = -dir * len * 0.35 + dir * i * 10;
-        ctx.globalAlpha = 0.45;
-        ctx.beginPath();
-        ctx.moveTo(fx, -4);
-        ctx.quadraticCurveTo(fx + dir * 4, -12 - i, fx + dir * 10, -8);
-        ctx.stroke();
-      }
     }
     ctx.restore();
   }
@@ -1016,60 +1099,67 @@ class ArcheryGame {
     const hp = clamp(Number(player?.hp ?? DUEL.maxHp), 0, DUEL.maxHp);
     const active = this.room?.phase === "playing" && this.room.turn === role;
     ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    roundedRectPath(ctx, x, y, 300, 72, 14);
-    ctx.fill();
+    this.drawGlassPanel(ctx, x, y, 300, 72);
     if (active) {
-      ctx.strokeStyle = "rgba(13, 138, 229, 0.55)";
-      ctx.lineWidth = 2.5;
-      roundedRectPath(ctx, x, y, 300, 72, 14);
+      ctx.strokeStyle = "rgba(255, 180, 80, 0.75)";
+      ctx.lineWidth = 2.4;
+      roundedRectPath(ctx, x + 1, y + 1, 298, 70, 13);
       ctx.stroke();
     }
-    ctx.fillStyle = "#213a58";
-    ctx.font = "800 18px Inter, sans-serif";
-    ctx.fillText(`${role === "p1" ? "1" : "2"}. ${player?.name || "Ожидание"}`, x + 12, y + 25);
-    ctx.fillStyle = "rgba(190,70,70,0.18)";
-    roundedRectPath(ctx, x + 12, y + 42, 276, 12, 7);
+    ctx.fillStyle = "#f7efe2";
+    ctx.font = `800 16px ${FONT_UI}`;
+    ctx.fillText(`${role === "p1" ? "1" : "2"}. ${player?.name || "Ожидание"}`, x + 14, y + 26);
+
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    roundedRectPath(ctx, x + 14, y + 40, 272, 12, 6);
     ctx.fill();
-    const hpColor = hp > 40 ? "#2fa56c" : hp > 18 ? "#e1a22f" : "#d94d4d";
+    const hpColor = hp > 40 ? "#4ecf84" : hp > 18 ? "#f0b44a" : "#ef5b5b";
     ctx.fillStyle = hpColor;
-    roundedRectPath(ctx, x + 12, y + 42, Math.max(0, 276 * (hp / DUEL.maxHp)), 12, 7);
+    roundedRectPath(ctx, x + 14, y + 40, Math.max(0, 272 * (hp / DUEL.maxHp)), 12, 6);
     ctx.fill();
     if (hp > 0 && hp <= 18) {
-      ctx.globalAlpha = 0.35 + Math.sin(this.idleTime * 8) * 0.2;
-      ctx.fillStyle = "#ff6b6b";
-      roundedRectPath(ctx, x + 12, y + 42, Math.max(0, 276 * (hp / DUEL.maxHp)), 12, 7);
+      ctx.globalAlpha = 0.4 + Math.sin(this.idleTime * 8) * 0.25;
+      ctx.fillStyle = "#ff8080";
+      roundedRectPath(ctx, x + 14, y + 40, Math.max(0, 272 * (hp / DUEL.maxHp)), 12, 6);
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = "#365a80";
-    ctx.font = "700 13px Inter, sans-serif";
-    ctx.fillText(`${hp} / ${DUEL.maxHp}`, x + 12, y + 66);
+    ctx.fillStyle = "rgba(247, 239, 226, 0.75)";
+    ctx.font = `700 12px ${FONT_UI}`;
+    ctx.fillText(`${hp} / ${DUEL.maxHp}`, x + 14, y + 66);
     ctx.restore();
   }
 
   getVisualFrame(role) {
     if (!this.room?.players?.[role]) return "preview";
+    const now = this.now || 0;
+
     if (this.room.phase === "finished") {
       if (this.room.winner === role) {
         const frames = ["jump", "run2", "run3", "run4"];
-        return frames[Math.floor(this.idleTime * 6) % frames.length];
+        return frames[Math.floor(this.idleTime * 5.5) % frames.length];
       }
       return "hurt";
     }
+
+    if ((this.hitReactUntil[role] || 0) > now) return "hurt";
     if (this.shotAnimation?.shot?.target === role && Number(this.shotAnimation.shot.damage || 0) > 0) {
       const shot = this.shotAnimation.shot;
-      const elapsed = (this.now || 0) - this.shotAnimation.start;
+      const elapsed = now - this.shotAnimation.start;
       const visualT = (elapsed / DUEL.arrowLifeMs) * 1.55;
       if (visualT >= Number(shot.impactT ?? 0)) return "hurt";
     }
+
+    if ((this.recoilUntil[role] || 0) > now) return "land";
+
     if (this.room.phase === "playing" && this.room.turn === role) {
       if (this.dragging && this.currentShooterRole() === role) return "land";
-      const frames = ["run1", "run2", "run3", "run4"];
-      return frames[Math.floor(this.idleTime * 7) % frames.length];
+      // Alert idle — keep face frames stable, avoid jogging-in-place
+      return Math.sin(this.idleTime * 2.4) > 0.82 ? "run2" : "preview";
     }
-    const frames = ["run1", "run2", "run3", "run4"];
-    return frames[Math.floor(this.idleTime * 4.5 + (role === "p1" ? 0 : 1.7)) % frames.length];
+
+    // Calm idle with rare micro-shift between standing frames
+    return Math.sin(this.idleTime * 1.6 + (role === "p1" ? 0 : 1.3)) > 0.88 ? "run1" : "preview";
   }
 
   drawPlayer(ctx, role) {
@@ -1083,28 +1173,62 @@ class ArcheryGame {
     const characterId = player.character || "gip";
     const sprites = this.sprites[characterId] || {};
     const frame = this.getVisualFrame(role);
-    const image = sprites[frame] || sprites.run1 || sprites.preview;
+    const image = sprites[frame] || sprites.preview || sprites.run1;
+    const phase = this.idleTime * (role === "p1" ? 1 : 1.07);
+    const aiming = this.dragging && this.currentShooterRole() === role && this.room.turn === role;
+    const hitReact = (this.hitReactUntil[role] || 0) > (this.now || 0);
+    const victory = this.room.phase === "finished" && this.room.winner === role;
+
+    const breath = 1 + Math.sin(phase * 2.6) * 0.012;
+    const bob = aiming ? 1.5 : Math.sin(phase * 2.8) * 1.6;
+    const sway = aiming ? 0 : Math.sin(phase * 1.3) * 1.4;
+    const lean = aiming ? -0.045 * (this.aim?.power || 40) / 100 : Math.sin(phase * 1.1) * 0.012;
+    const crouch = aiming ? 0.94 : frame === "land" ? 0.96 : 1;
+    const victoryLift = victory ? Math.abs(Math.sin(this.idleTime * 5.5)) * 12 : 0;
+    const hitNudge = hitReact ? Math.sin(this.idleTime * 40) * 2.2 : 0;
+
     const w = DUEL.charW;
-    const h = frame === "land" ? DUEL.charH * 0.92 : frame === "jump" ? DUEL.charH * 1.04 : DUEL.charH;
-    const bob = Math.sin(this.idleTime * 3.2 + (role === "p1" ? 0 : Math.PI)) * 2.2;
-    const victoryLift = this.room.phase === "finished" && this.room.winner === role
-      ? Math.abs(Math.sin(this.idleTime * 6)) * 10
-      : 0;
+    const h = DUEL.charH * crouch * (frame === "jump" ? 1.03 : 1);
 
     ctx.save();
-    ctx.fillStyle = "rgba(35,64,92,0.18)";
+    // Contact shadow (extra soft under feet; sprite may already include a small one)
+    ctx.fillStyle = "rgba(20, 16, 10, 0.28)";
     ctx.beginPath();
-    ctx.ellipse(pos.x, pos.y + 4, 48 - victoryLift * 0.4, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(pos.x + sway * 0.3, pos.y + 5, 56 - victoryLift * 0.5, 11, 0, 0, Math.PI * 2);
     ctx.fill();
 
     if (image) {
-      ctx.translate(pos.x, pos.y + bob - victoryLift);
+      ctx.translate(pos.x + sway + hitNudge, pos.y + bob - victoryLift);
+      ctx.rotate(lean * (role === "p2" ? -1 : 1));
       if (role === "p2") ctx.scale(-1, 1);
+      ctx.scale(breath, 2 - breath);
+
       const scale = Math.min(w / image.naturalWidth, h / image.naturalHeight);
       const drawW = image.naturalWidth * scale;
       const drawH = image.naturalHeight * scale;
+
+      // Warm key-light plate behind character (does not alter face pixels)
+      const backlight = ctx.createRadialGradient(0, -drawH * 0.55, 8, 0, -drawH * 0.45, drawW * 0.85);
+      backlight.addColorStop(0, "rgba(255, 190, 120, 0.22)");
+      backlight.addColorStop(1, "rgba(255, 190, 120, 0)");
+      ctx.fillStyle = backlight;
+      ctx.beginPath();
+      ctx.ellipse(0, -drawH * 0.5, drawW * 0.55, drawH * 0.48, 0, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.drawImage(image, -drawW / 2, -drawH, drawW, drawH);
-      if (this.room.phase !== "finished") this.drawBowOverlay(ctx, role, drawW, drawH);
+
+      if (hitReact) {
+        const flash = ctx.createRadialGradient(0, -drawH * 0.45, 6, 0, -drawH * 0.4, drawW * 0.7);
+        flash.addColorStop(0, "rgba(220, 50, 40, 0.28)");
+        flash.addColorStop(1, "rgba(220, 50, 40, 0)");
+        ctx.fillStyle = flash;
+        ctx.beginPath();
+        ctx.ellipse(0, -drawH * 0.42, drawW * 0.42, drawH * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (this.room.phase !== "finished") this.drawBowOverlay(ctx, role, drawW, drawH, aiming);
     } else {
       ctx.fillStyle = role === "p1" ? "#1f5d8c" : "#8c4b1f";
       roundedRectPath(ctx, pos.x - 24, pos.y - 112, 48, 90, 16);
@@ -1117,81 +1241,111 @@ class ArcheryGame {
     ctx.restore();
   }
 
-  drawBowOverlay(ctx, role, drawW, drawH) {
-    const active = this.room?.phase === "playing" && this.room.turn === role && this.canControlShot();
-    const localAim = active && this.dragging && this.currentShooterRole() === role ? this.aim : null;
-    const tension = localAim ? clamp(localAim.power / 100, 0, 1) : 0.25 + Math.sin(this.idleTime * 4) * 0.035;
-    const bowX = drawW * 0.34;
-    const bowY = -drawH * 0.54;
-    const bowH = 54;
-    const pull = 12 + tension * 28;
+  drawBowOverlay(ctx, role, drawW, drawH, aiming) {
+    const localAim = aiming ? this.aim : null;
+    const tension = localAim ? clamp(localAim.power / 100, 0, 1) : 0.22 + Math.sin(this.idleTime * 3.2) * 0.03;
+    const bowX = drawW * 0.38;
+    const bowY = -drawH * 0.5;
+    const bowH = 62;
+    const pull = 10 + tension * 32;
     const charged = tension > 0.78;
+    const stringSag = aiming ? 0 : 5;
 
     ctx.save();
     if (charged) {
-      ctx.shadowColor = "rgba(255, 170, 60, 0.85)";
-      ctx.shadowBlur = 14;
+      ctx.shadowColor = "rgba(255, 170, 60, 0.9)";
+      ctx.shadowBlur = 16;
     }
 
-    ctx.strokeStyle = charged ? "rgba(170, 78, 18, 0.98)" : "rgba(86, 45, 22, 0.95)";
-    ctx.lineWidth = charged ? 5 : 4;
+    // Bow limb
+    const limb = ctx.createLinearGradient(bowX - 4, bowY, bowX + 20, bowY);
+    limb.addColorStop(0, charged ? "#8a3a12" : "#5a2c14");
+    limb.addColorStop(1, charged ? "#d4893a" : "#a56834");
+    ctx.strokeStyle = limb;
+    ctx.lineWidth = charged ? 5.5 : 4.4;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(bowX, bowY - bowH / 2);
-    ctx.quadraticCurveTo(bowX + 18, bowY, bowX, bowY + bowH / 2);
+    ctx.quadraticCurveTo(bowX + 22, bowY, bowX, bowY + bowH / 2);
     ctx.stroke();
 
+    // Tips
     ctx.shadowBlur = 0;
-    ctx.strokeStyle = charged ? "rgba(80, 40, 10, 0.9)" : "rgba(32, 32, 36, 0.82)";
-    ctx.lineWidth = 1.6;
+    ctx.fillStyle = "#d7b16a";
+    ctx.beginPath();
+    ctx.arc(bowX, bowY - bowH / 2, 2.4, 0, Math.PI * 2);
+    ctx.arc(bowX, bowY + bowH / 2, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // String with natural curve
+    ctx.strokeStyle = charged ? "rgba(70, 40, 20, 0.92)" : "rgba(40, 32, 28, 0.82)";
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(bowX, bowY - bowH / 2);
-    ctx.lineTo(bowX - pull, bowY);
-    ctx.lineTo(bowX, bowY + bowH / 2);
+    ctx.quadraticCurveTo(bowX - pull, bowY + stringSag * 0.2, bowX - pull, bowY);
+    ctx.quadraticCurveTo(bowX - pull, bowY - stringSag * 0.2, bowX, bowY + bowH / 2);
     ctx.stroke();
 
     if (localAim) {
-      // Hide nocked arrow while aiming — flying arrow will appear on release
       ctx.restore();
       return;
     }
 
-    ctx.strokeStyle = "rgba(246, 235, 193, 0.95)";
-    ctx.lineWidth = 2.4;
+    // Nocked arrow
+    ctx.strokeStyle = "#e8d7a8";
+    ctx.lineWidth = 2.6;
     ctx.beginPath();
-    ctx.moveTo(bowX - pull - 8, bowY);
-    ctx.lineTo(bowX + 26, bowY);
+    ctx.moveTo(bowX - pull - 6, bowY);
+    ctx.lineTo(bowX + 30, bowY);
     ctx.stroke();
 
-    ctx.fillStyle = "#d79b35";
+    ctx.fillStyle = "#e0a23a";
     ctx.beginPath();
-    ctx.moveTo(bowX + 29, bowY);
-    ctx.lineTo(bowX + 17, bowY - 5);
-    ctx.lineTo(bowX + 17, bowY + 5);
+    ctx.moveTo(bowX + 34, bowY);
+    ctx.lineTo(bowX + 20, bowY - 5.5);
+    ctx.lineTo(bowX + 20, bowY + 5.5);
     ctx.closePath();
     ctx.fill();
 
-    // Fletching
-    ctx.fillStyle = "rgba(62, 126, 184, 0.9)";
+    ctx.fillStyle = "#3f7fb6";
     ctx.beginPath();
-    ctx.moveTo(bowX - pull - 4, bowY);
-    ctx.lineTo(bowX - pull - 12, bowY - 5);
-    ctx.lineTo(bowX - pull - 8, bowY);
-    ctx.lineTo(bowX - pull - 12, bowY + 5);
+    ctx.moveTo(bowX - pull - 2, bowY);
+    ctx.lineTo(bowX - pull - 11, bowY - 5);
+    ctx.lineTo(bowX - pull - 7, bowY);
+    ctx.lineTo(bowX - pull - 11, bowY + 5);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
   }
 
   drawWaitingSilhouette(ctx) {
+    const x = DUEL.p2X;
+    const y = DUEL.groundY;
+    const pulse = 0.28 + Math.sin(this.idleTime * 2.4) * 0.08;
     ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.52)";
-    roundedRectPath(ctx, DUEL.p2X - 72, DUEL.groundY - 160, 144, 156, 20);
+    ctx.fillStyle = "rgba(20, 16, 12, 0.25)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + 5, 52, 11, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#4d6c8a";
-    ctx.font = "800 15px Inter, sans-serif";
+
+    ctx.globalAlpha = pulse + 0.25;
+    ctx.fillStyle = "rgba(230, 210, 185, 0.55)";
+    // Body ghost
+    roundedRectPath(ctx, x - 26, y - 118, 52, 78, 18);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y - 140, 24, 0, Math.PI * 2);
+    ctx.fill();
+    roundedRectPath(ctx, x - 34, y - 40, 28, 40, 10);
+    ctx.fill();
+    roundedRectPath(ctx, x + 6, y - 40, 28, 40, 10);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "#f3e7d4";
+    ctx.font = `800 14px ${FONT_UI}`;
     ctx.textAlign = "center";
-    ctx.fillText("Ждём игрока", DUEL.p2X, DUEL.groundY - 78);
+    ctx.fillText("Ждём игрока", x, y - 168);
     ctx.textAlign = "left";
     ctx.restore();
   }
@@ -1205,17 +1359,15 @@ class ArcheryGame {
     const aim = this.aim;
 
     ctx.save();
-    ctx.setLineDash([]);
-
     if (!aim) {
-      const pulse = 0.62 + Math.sin(this.idleTime * 3.5) * 0.12;
-      ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-      roundedRectPath(ctx, start.x - 92, start.y + 34, 184, 34, 10);
+      const pulse = 0.55 + Math.sin(this.idleTime * 3.2) * 0.15;
+      ctx.fillStyle = `rgba(18, 12, 16, ${pulse})`;
+      roundedRectPath(ctx, start.x - 96, start.y + 36, 192, 34, 10);
       ctx.fill();
-      ctx.fillStyle = "#365a80";
-      ctx.font = "700 13px Inter, sans-serif";
+      ctx.fillStyle = "#f7efe2";
+      ctx.font = `700 13px ${FONT_UI}`;
       ctx.textAlign = "center";
-      ctx.fillText("Зажми и оттяни назад", start.x, start.y + 56);
+      ctx.fillText("Зажми и оттяни назад", start.x, start.y + 58);
       ctx.textAlign = "left";
       ctx.restore();
       return;
@@ -1223,37 +1375,39 @@ class ArcheryGame {
 
     this.drawTrajectoryPreview(ctx, role, aim);
 
-    const visiblePull = Math.min(64, aim.pull);
+    const visiblePull = Math.min(68, aim.pull);
     const dirLen = Math.max(1, Math.sqrt((aim.startX - aim.endX) ** 2 + (aim.startY - aim.endY) ** 2));
     const ux = (aim.endX - aim.startX) / dirLen;
     const uy = (aim.endY - aim.startY) / dirLen;
     const px = aim.startX + ux * visiblePull;
     const py = aim.startY + uy * visiblePull;
 
-    ctx.strokeStyle = aim.power > 78 ? "rgba(213, 129, 46, 0.7)" : "rgba(25, 71, 118, 0.5)";
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = aim.power > 78 ? "rgba(255, 170, 70, 0.8)" : "rgba(255, 220, 160, 0.55)";
+    ctx.lineWidth = 3.5;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(aim.startX, aim.startY);
     ctx.lineTo(px, py);
     ctx.stroke();
-
-    ctx.fillStyle = aim.power > 78 ? "rgba(213, 129, 46, 0.95)" : "rgba(47, 146, 214, 0.95)";
+    ctx.fillStyle = aim.power > 78 ? "#ffb24a" : "#ffe2b0";
     ctx.beginPath();
-    ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    roundedRectPath(ctx, aim.startX - 62, aim.startY + 42, 124, 48, 10);
-    ctx.fill();
-    ctx.fillStyle = "#194776";
-    ctx.font = "800 13px Inter, sans-serif";
+    // Readout without bulky white card
     ctx.textAlign = "center";
-    ctx.fillText(`${aim.angle}° / ${aim.power}%`, aim.startX, aim.startY + 60);
-    ctx.fillStyle = "rgba(25,71,118,0.18)";
+    ctx.font = `800 16px ${FONT_UI}`;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(20, 12, 10, 0.7)";
+    ctx.fillStyle = "#fff4e4";
+    const label = `${aim.angle}°  ${aim.power}%`;
+    ctx.strokeText(label, aim.startX, aim.startY + 58);
+    ctx.fillText(label, aim.startX, aim.startY + 58);
+
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
     roundedRectPath(ctx, aim.startX - 48, aim.startY + 68, 96, 7, 4);
     ctx.fill();
-    ctx.fillStyle = aim.power > 78 ? "#d5812e" : "#2f92d6";
+    ctx.fillStyle = aim.power > 78 ? "#ffb24a" : "#7ad0ff";
     roundedRectPath(ctx, aim.startX - 48, aim.startY + 68, 96 * (aim.power / 100), 7, 4);
     ctx.fill();
     ctx.textAlign = "left";
@@ -1263,16 +1417,16 @@ class ArcheryGame {
   drawTrajectoryPreview(ctx, role, aim) {
     const draft = this.makeShot(role, aim.angle, aim.power);
     ctx.save();
-    for (let i = 1; i <= 18; i++) {
-      const t = i * 0.045;
+    for (let i = 1; i <= 20; i++) {
+      const t = i * 0.042;
       const pose = this.getArrowPose(draft, t);
       if (pose.y > DUEL.groundY + 4 || pose.x < -40 || pose.x > this.width + 40) break;
-      const alpha = 0.42 * (1 - i / 20);
+      const alpha = 0.5 * (1 - i / 22);
       ctx.fillStyle = aim.power > 78
-        ? `rgba(213, 129, 46, ${alpha})`
-        : `rgba(47, 146, 214, ${alpha})`;
+        ? `rgba(255, 178, 74, ${alpha})`
+        : `rgba(255, 230, 180, ${alpha})`;
       ctx.beginPath();
-      ctx.arc(pose.x, pose.y, Math.max(1.6, 3.2 - i * 0.08), 0, Math.PI * 2);
+      ctx.arc(pose.x, pose.y, Math.max(1.5, 3.1 - i * 0.07), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -1290,37 +1444,35 @@ class ArcheryGame {
       this.spawnHitFx(shot);
     }
 
-    if (elapsed > DUEL.arrowLifeMs + 280) {
+    if (elapsed > DUEL.arrowLifeMs + 320) {
       this.shotAnimation = null;
       return;
     }
 
     if (!flying) return;
 
-    // Motion trail
     ctx.save();
     for (let i = DUEL.trailLength; i >= 1; i--) {
-      const trailT = Math.max(0, visualT - i * 0.018);
+      const trailT = Math.max(0, visualT - i * 0.016);
       const pose = this.getArrowPose(shot, trailT);
-      const alpha = 0.08 + (1 - i / DUEL.trailLength) * 0.28;
-      ctx.strokeStyle = `rgba(92, 60, 31, ${alpha})`;
-      ctx.lineWidth = 2 + (1 - i / DUEL.trailLength) * 2;
+      const next = this.getArrowPose(shot, trailT + 0.01);
+      const alpha = 0.06 + (1 - i / DUEL.trailLength) * 0.34;
+      ctx.strokeStyle = `rgba(255, 210, 140, ${alpha})`;
+      ctx.lineWidth = 1.5 + (1 - i / DUEL.trailLength) * 2.8;
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(pose.x, pose.y);
-      const next = this.getArrowPose(shot, trailT + 0.012);
       ctx.lineTo(next.x, next.y);
       ctx.stroke();
     }
 
-    // Soft glow smear
     const tip = this.getArrowPose(shot, visualT);
-    const glow = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 18);
-    glow.addColorStop(0, "rgba(255, 220, 140, 0.35)");
+    const glow = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 20);
+    glow.addColorStop(0, "rgba(255, 220, 140, 0.45)");
     glow.addColorStop(1, "rgba(255, 220, 140, 0)");
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(tip.x, tip.y, 18, 0, Math.PI * 2);
+    ctx.arc(tip.x, tip.y, 20, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -1332,34 +1484,41 @@ class ArcheryGame {
     ctx.translate(x, y);
     ctx.rotate(angle);
 
-    ctx.strokeStyle = "#5c3c1f";
-    ctx.lineWidth = 3.2;
+    ctx.strokeStyle = "#6a4422";
+    ctx.lineWidth = 3.4;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(-26, 0);
+    ctx.moveTo(-28, 0);
     ctx.lineTo(22, 0);
     ctx.stroke();
 
-    ctx.fillStyle = "#c78a2e";
+    ctx.strokeStyle = "rgba(255, 230, 180, 0.35)";
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(28, 0);
-    ctx.lineTo(14, -6);
-    ctx.lineTo(14, 6);
+    ctx.moveTo(-24, -1);
+    ctx.lineTo(18, -1);
+    ctx.stroke();
+
+    ctx.fillStyle = "#e0a23a";
+    ctx.beginPath();
+    ctx.moveTo(30, 0);
+    ctx.lineTo(15, -6.5);
+    ctx.lineTo(15, 6.5);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "#3e7eb8";
+    ctx.fillStyle = "#3f7fb6";
     ctx.beginPath();
     ctx.moveTo(-22, 0);
-    ctx.lineTo(-30, -6);
+    ctx.lineTo(-31, -6);
     ctx.lineTo(-26, 0);
-    ctx.lineTo(-30, 6);
+    ctx.lineTo(-31, 6);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = "#d94d4d";
     ctx.beginPath();
-    ctx.moveTo(-18, 0);
+    ctx.moveTo(-17, 0);
     ctx.lineTo(-26, -5);
     ctx.lineTo(-22, 0);
     ctx.lineTo(-26, 5);
@@ -1370,7 +1529,7 @@ class ArcheryGame {
 
   drawStuckArrows(ctx) {
     for (const arrow of this.stuckArrows) {
-      const alpha = clamp(arrow.life / 1.2, 0, 1);
+      const alpha = clamp(arrow.life / 1.3, 0, 1);
       ctx.save();
       ctx.globalAlpha = alpha;
       this.drawArrowSprite(ctx, arrow.x, arrow.y - 4, arrow.angle);
@@ -1402,14 +1561,17 @@ class ArcheryGame {
       ctx.save();
       ctx.globalAlpha = f.opacity;
       ctx.textAlign = "center";
-      ctx.font = "900 28px Inter, sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText(f.text, f.x + 1, f.y + 2);
+      ctx.font = `900 34px ${FONT_DISPLAY}`;
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(20, 10, 8, 0.75)";
+      ctx.strokeText(f.text, f.x, f.y);
       ctx.fillStyle = f.color;
       ctx.fillText(f.text, f.x, f.y);
       if (f.sub) {
-        ctx.font = "700 13px Inter, sans-serif";
-        ctx.fillStyle = "#365a80";
+        ctx.font = `700 13px ${FONT_UI}`;
+        ctx.lineWidth = 3;
+        ctx.strokeText(f.sub, f.x, f.y + 18);
+        ctx.fillStyle = "#f3e7d4";
         ctx.fillText(f.sub, f.x, f.y + 18);
       }
       ctx.textAlign = "left";
@@ -1429,27 +1591,19 @@ class ArcheryGame {
           ? "Поражение"
           : "Конец дуэли";
     const subtitle = winner?.name ? `Победитель: ${winner.name}` : "Дуэль завершена";
-    const pulse = 0.88 + Math.sin(this.idleTime * 3) * 0.06;
 
     ctx.save();
-    ctx.fillStyle = `rgba(18, 42, 68, ${0.18 + Math.sin(this.idleTime * 2) * 0.03})`;
+    ctx.fillStyle = `rgba(12, 8, 10, ${0.28 + Math.sin(this.idleTime * 2) * 0.03})`;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-    roundedRectPath(ctx, this.width / 2 - 210, 150, 420, 110, 18);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(13, 138, 229, 0.35)";
-    ctx.lineWidth = 2;
-    roundedRectPath(ctx, this.width / 2 - 210, 150, 420, 110, 18);
-    ctx.stroke();
-
+    this.drawGlassPanel(ctx, this.width / 2 - 220, 142, 440, 118);
     ctx.textAlign = "center";
-    ctx.fillStyle = title === "Победа!" ? "#1f8a4c" : "#194776";
-    ctx.font = "900 36px Inter, sans-serif";
+    ctx.font = `900 40px ${FONT_DISPLAY}`;
+    ctx.fillStyle = title === "Победа!" ? "#ffd27a" : "#f0e2d0";
     ctx.fillText(title, this.width / 2, 198);
-    ctx.fillStyle = "#446387";
-    ctx.font = "700 16px Inter, sans-serif";
-    ctx.fillText(subtitle, this.width / 2, 230);
+    ctx.fillStyle = "rgba(247, 239, 226, 0.82)";
+    ctx.font = `700 16px ${FONT_UI}`;
+    ctx.fillText(subtitle, this.width / 2, 232);
     ctx.textAlign = "left";
     ctx.restore();
   }
@@ -1459,29 +1613,25 @@ class ArcheryGame {
     const shot = this.room.lastShot;
     const text = shot.damage > 0 ? `Попадание: ${shot.hitLabel}, -${shot.damage} HP` : "Промах";
     ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    roundedRectPath(ctx, this.width / 2 - 170, this.height - 76, 340, 46, 12);
-    ctx.fill();
-    ctx.fillStyle = shot.damage > 0 ? "#b43636" : "#365a80";
-    ctx.font = "800 16px Inter, sans-serif";
+    this.drawGlassPanel(ctx, this.width / 2 - 180, this.height - 74, 360, 46);
+    ctx.fillStyle = shot.damage > 0 ? "#ffb4a4" : "#f0e2d0";
+    ctx.font = `800 15px ${FONT_UI}`;
     ctx.textAlign = "center";
-    ctx.fillText(text, this.width / 2, this.height - 48);
+    ctx.fillText(text, this.width / 2, this.height - 46);
     ctx.textAlign = "left";
     ctx.restore();
   }
 
   drawCenterMessage(ctx, title, subtitle) {
     ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    roundedRectPath(ctx, this.width / 2 - 290, this.height / 2 - 70, 580, 140, 18);
-    ctx.fill();
-    ctx.fillStyle = "#194776";
-    ctx.font = "800 30px Inter, sans-serif";
+    this.drawGlassPanel(ctx, this.width / 2 - 290, this.height / 2 - 72, 580, 144);
+    ctx.fillStyle = "#ffe2b0";
+    ctx.font = `900 34px ${FONT_DISPLAY}`;
     ctx.textAlign = "center";
-    ctx.fillText(title, this.width / 2, this.height / 2 - 18);
-    ctx.fillStyle = "#446387";
-    ctx.font = "600 17px Inter, sans-serif";
-    ctx.fillText(subtitle, this.width / 2, this.height / 2 + 24);
+    ctx.fillText(title, this.width / 2, this.height / 2 - 12);
+    ctx.fillStyle = "rgba(247, 239, 226, 0.85)";
+    ctx.font = `600 16px ${FONT_UI}`;
+    ctx.fillText(subtitle, this.width / 2, this.height / 2 + 28);
     ctx.textAlign = "left";
     ctx.restore();
   }

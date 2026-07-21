@@ -444,8 +444,8 @@ kbd {
 
 .archery-shell {
   background:
-    radial-gradient(circle at 78% 18%, rgba(255, 232, 170, 0.35), transparent 28%),
-    linear-gradient(180deg, #f4faff 0%, #e5f2ff 58%, #d5e9fb 100%);
+    radial-gradient(circle at 82% 12%, rgba(255, 170, 90, 0.28), transparent 30%),
+    linear-gradient(180deg, #2a1c2c 0%, #6a3a3a 42%, #c47a48 100%);
 }
 
 .archery-shell canvas {
@@ -453,11 +453,21 @@ kbd {
   max-width: 100%;
   height: auto;
   border-radius: 12px;
-  background: transparent;
+  background: #24182f;
   display: block;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
-    0 10px 28px rgba(28, 74, 124, 0.16);
+    inset 0 0 0 1px rgba(255, 210, 150, 0.18),
+    0 14px 34px rgba(28, 14, 12, 0.35);
+}
+
+.archery-app {
+  font-family: Manrope, "Segoe UI", sans-serif;
+}
+
+.archery-app h1,
+.archery-app h2 {
+  font-family: "Russo One", Manrope, sans-serif;
+  letter-spacing: 0.02em;
 }
 
 .duel-controls {
