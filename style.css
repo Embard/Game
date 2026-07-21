@@ -1,10 +1,13 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap");
+
 :root {
-  --bg: #e9f4ff;
-  --panel: rgba(255, 255, 255, 0.9);
-  --text: #223047;
+  --bg: #dff0ff;
+  --panel: rgba(255, 255, 255, 0.92);
+  --text: #1e334f;
   --accent: #0d8ae5;
   --accent-soft: #6ec3ff;
-  --line: rgba(15, 40, 80, 0.18);
+  --line: rgba(15, 40, 80, 0.16);
+  --shadow: rgba(21, 63, 117, 0.12);
 }
 
 * {
@@ -15,12 +18,14 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: Manrope, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at 18% 10%, #f8fcff 0%, rgba(248, 252, 255, 0.9) 20%, transparent 46%),
-    radial-gradient(circle at 85% 0%, rgba(198, 226, 255, 0.75), transparent 34%),
-    linear-gradient(180deg, #eff7ff 0%, var(--bg) 100%);
+    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.95) 0%, transparent 28%),
+    radial-gradient(circle at 88% 4%, rgba(170, 214, 255, 0.7), transparent 32%),
+    radial-gradient(circle at 50% 100%, rgba(140, 198, 255, 0.28), transparent 42%),
+    linear-gradient(180deg, #f3f9ff 0%, var(--bg) 55%, #d4e9fb 100%);
+  background-attachment: fixed;
 }
 
 body {
@@ -42,10 +47,11 @@ body {
 .character-panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 14px 16px;
-  backdrop-filter: blur(6px);
-  box-shadow: 0 10px 24px rgba(21, 63, 117, 0.08);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 28px var(--shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .hud h1,
@@ -53,6 +59,7 @@ body {
 .leaderboard-head h2,
 .character-head h2 {
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .hud h1 {
@@ -64,24 +71,38 @@ body {
 .leaderboard-head p {
   margin: 4px 0 0;
   color: #4f6482;
+  line-height: 1.45;
 }
 
 .game-shell {
   position: relative;
-  background: linear-gradient(180deg, #f7fbff 0%, #eaf5ff 60%, #deeeff 100%);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.55), rgba(234,245,255,0.9)),
+    linear-gradient(180deg, #f7fbff 0%, #eaf5ff 60%, #deeeff 100%);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 14px;
-  box-shadow: 0 12px 28px rgba(21, 63, 117, 0.14);
+  box-shadow: 0 16px 36px rgba(21, 63, 117, 0.16);
+  overflow: hidden;
+}
+
+.game-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 80% 0%, rgba(110, 190, 255, 0.18), transparent 40%);
+  pointer-events: none;
 }
 
 #gameCanvas {
   width: 100%;
   max-width: 100%;
   height: auto;
-  border-radius: 12px;
+  border-radius: 14px;
   background: transparent;
   display: block;
+  position: relative;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
 }
 
 .controls {
@@ -93,19 +114,20 @@ body {
 
 .btn {
   border: none;
-  background: linear-gradient(180deg, #20a2ff, #0884dd);
+  background: linear-gradient(180deg, #2aafff, #0a7fd4);
   color: #fff;
   padding: 9px 14px;
-  border-radius: 10px;
-  font-weight: 700;
+  border-radius: 12px;
+  font-weight: 800;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 6px 14px rgba(10, 85, 147, 0.18);
 }
 
 .btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(10, 85, 147, 0.25);
-  filter: brightness(1.03);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(10, 85, 147, 0.28);
+  filter: brightness(1.04);
 }
 
 .btn:active {
@@ -132,21 +154,27 @@ kbd {
   position: fixed;
   right: 16px;
   bottom: max(16px, env(safe-area-inset-bottom));
-  width: 82px;
-  height: 82px;
+  width: 86px;
+  height: 86px;
   border-radius: 50%;
   border: none;
-  background: radial-gradient(circle at 30% 25%, #7bc8ff, #1879ce);
+  background: radial-gradient(circle at 30% 25%, #8ad0ff, #1574c7 70%, #0d5fa8);
   color: #fff;
   font-weight: 800;
   font-size: 1rem;
-  box-shadow: 0 10px 20px rgba(6, 45, 87, 0.32);
+  box-shadow: 0 12px 24px rgba(6, 45, 87, 0.34);
   display: none;
   z-index: 99;
+  animation: duckPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes duckPulse {
+  0%, 100% { box-shadow: 0 12px 24px rgba(6, 45, 87, 0.34); }
+  50% { box-shadow: 0 14px 28px rgba(6, 45, 87, 0.42), 0 0 0 8px rgba(32, 162, 255, 0.12); }
 }
 
 .duck-mobile:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 .leaderboard-head,
@@ -169,12 +197,13 @@ kbd {
 .player-name-label input {
   width: 220px;
   border: 1px solid #c6d6ea;
-  border-radius: 9px;
+  border-radius: 10px;
   padding: 9px 10px;
   font: inherit;
   color: var(--text);
   background: rgba(255, 255, 255, 0.92);
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .player-name-label input:focus {
@@ -196,8 +225,14 @@ kbd {
   gap: 12px;
   padding: 8px 10px;
   border: 1px solid rgba(15, 40, 80, 0.12);
-  border-radius: 10px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.64);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.leaderboard-list li:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .leaderboard-list strong {
@@ -217,8 +252,8 @@ kbd {
 
 .character-card {
   border: 1px solid rgba(15, 40, 80, 0.14);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.7);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
   padding: 10px;
   display: grid;
   grid-template-columns: 72px 1fr;
@@ -226,17 +261,17 @@ kbd {
   align-items: center;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .character-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(21, 63, 117, 0.12);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(21, 63, 117, 0.14);
 }
 
 .character-card.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(13, 138, 229, 0.12);
+  box-shadow: 0 0 0 3px rgba(13, 138, 229, 0.14), 0 10px 22px rgba(21, 63, 117, 0.12);
 }
 
 .character-card.loading {
@@ -248,8 +283,10 @@ kbd {
   width: 72px;
   height: 72px;
   object-fit: contain;
-  border-radius: 10px;
-  background: rgba(222, 238, 255, 0.7);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 40% 30%, rgba(255,255,255,0.9), transparent 55%),
+    rgba(222, 238, 255, 0.7);
 }
 
 .character-card strong {
@@ -285,6 +322,20 @@ kbd {
 
 .menu-hero {
   padding: 22px 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.menu-hero::after {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(32, 162, 255, 0.22), transparent 70%);
+  pointer-events: none;
 }
 
 .game-mode-grid {
@@ -301,22 +352,40 @@ kbd {
   padding: 22px;
   text-decoration: none;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--line);
-  border-radius: 18px;
-  box-shadow: 0 12px 28px rgba(21, 63, 117, 0.12);
-  transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  border-radius: 20px;
+  box-shadow: 0 14px 30px rgba(21, 63, 117, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.game-mode-card::before {
+  content: "";
+  position: absolute;
+  inset: auto -20% -40% auto;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(13, 138, 229, 0.16), transparent 70%);
+  transition: transform 0.35s ease;
 }
 
 .game-mode-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-4px);
   border-color: rgba(13, 138, 229, 0.55);
-  box-shadow: 0 16px 34px rgba(21, 63, 117, 0.18);
+  box-shadow: 0 18px 38px rgba(21, 63, 117, 0.18);
+}
+
+.game-mode-card:hover::before {
+  transform: scale(1.25) translate(-10px, -10px);
 }
 
 .game-mode-card strong {
   font-size: clamp(1.45rem, 3vw, 2.1rem);
   color: #194776;
+  letter-spacing: -0.02em;
 }
 
 .game-mode-card span:not(.game-mode-badge) {
@@ -329,10 +398,11 @@ kbd {
   margin-top: 12px;
   padding: 9px 14px;
   color: #fff;
-  background: linear-gradient(180deg, #20a2ff, #0884dd);
-  border-radius: 10px;
+  background: linear-gradient(180deg, #2aafff, #0a7fd4);
+  border-radius: 12px;
   font-style: normal;
   font-weight: 800;
+  box-shadow: 0 8px 16px rgba(10, 85, 147, 0.22);
 }
 
 .game-mode-card-accent {
@@ -359,10 +429,12 @@ kbd {
   color: #194776;
   text-decoration: none;
   font-weight: 800;
+  transition: transform 0.15s ease;
 }
 
 .back-link:hover {
   text-decoration: underline;
+  transform: translateX(-2px);
 }
 
 .duel-setup,
@@ -449,6 +521,8 @@ kbd {
   border-radius: 12px;
   background: transparent;
   display: block;
+  touch-action: none;
+  cursor: crosshair;
 }
 
 .duel-controls {
@@ -535,11 +609,6 @@ kbd {
   background: rgba(255,255,255,0.72);
   color: #365a80;
   font-weight: 800;
-}
-
-.archery-shell canvas {
-  touch-action: none;
-  cursor: crosshair;
 }
 
 @media (max-width: 920px) {
